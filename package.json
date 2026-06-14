@@ -1,0 +1,16 @@
+{
+  "name": "anki-studio",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Turn an anime episode and subtitle file into an Anki deck.",
+  "license": "MIT",
+  "scripts": {
+    "dev": "pnpm -r --parallel run dev",
+    "build": "pnpm -r run build",
+    "typecheck": "pnpm -r run typecheck"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "packageManager": "pnpm@11.3.0"
+}
