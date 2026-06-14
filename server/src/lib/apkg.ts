@@ -306,9 +306,13 @@ export async function buildApkg(opts: BuildApkgOptions): Promise<void> {
     zip.on('error', reject);
     zip.pipe(out);
 
-    zip.file(tmpDb, { name: 'collection.anki21' });
+    // Use the legacy filename + no meta file. Anki's importer reads `meta` as
+    // a protobuf message (not JSON), so any JSON we wrote there would fail
+    // protobuf decoding and abort the import. With no meta, Anki defaults to
+    // the Legacy1 format which looks for `collection.anki2`. This is what
+    // genanki produces and is broadly compatible.
+    zip.file(tmpDb, { name: 'collection.anki2' });
     zip.append(JSON.stringify(mediaMap), { name: 'media' });
-    zip.append(JSON.stringify({ ver: 2 }), { name: 'meta' });
     for (const { key, src } of mediaToCopy) {
       zip.file(src, { name: key });
     }
