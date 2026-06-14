@@ -4,6 +4,7 @@ import { config } from '../config.js';
 import {
   registerSession,
   sessionDir,
+  unregisterSession,
   type Session,
 } from './session.js';
 
@@ -74,6 +75,9 @@ export async function rehydrateSessions(): Promise<number> {
 }
 
 export async function deleteSession(sid: string): Promise<void> {
+  const existing = pending.get(sid);
+  if (existing) clearTimeout(existing);
   pending.delete(sid);
+  unregisterSession(sid);
   await fs.rm(sessionDir(sid), { recursive: true, force: true });
 }

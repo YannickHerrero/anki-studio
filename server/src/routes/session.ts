@@ -1,8 +1,47 @@
 import type { FastifyInstance } from 'fastify';
-import { getSession, requireSession, type Decision } from '../lib/session.js';
-import { persistSession } from '../lib/persistence.js';
+import {
+  allSessions,
+  getSession,
+  requireSession,
+  type Decision,
+} from '../lib/session.js';
+import { deleteSession, persistSession } from '../lib/persistence.js';
+
+function summarize(s: ReturnType<typeof allSessions>[number]) {
+  const kept = Object.values(s.decisions).filter((d) => d === 'keep').length;
+  const skipped = Object.values(s.decisions).filter((d) => d === 'skip').length;
+  return {
+    id: s.id,
+    source: s.source,
+    title: s.title ?? s.videoOriginalName ?? s.youtubeUrl ?? '(untitled)',
+    youtubeUrl: s.youtubeUrl,
+    status: s.status,
+    errorMessage: s.errorMessage,
+    createdAt: s.createdAt,
+    updatedAt: s.updatedAt,
+    totalCards: s.cards.length,
+    keptCount: kept,
+    skippedCount: skipped,
+    hasExport: !!s.lastApkgPath,
+  };
+}
 
 export async function sessionRoutes(app: FastifyInstance) {
+  app.get('/sessions', async () => {
+    const list = allSessions()
+      .map(summarize)
+      .sort((a, b) => b.updatedAt - a.updatedAt);
+    return { sessions: list };
+  });
+
+  app.delete('/session/:sid', async (req, reply) => {
+    const { sid } = req.params as { sid: string };
+    const s = getSession(sid);
+    if (!s) return reply.code(404).send({ error: 'unknown session' });
+    await deleteSession(sid);
+    return { ok: true };
+  });
+
   app.get('/session/:sid', async (req, reply) => {
     const { sid } = req.params as { sid: string };
     const session = getSession(sid);

@@ -83,6 +83,10 @@ export function registerSession(session: Session): void {
   sessions.set(session.id, session);
 }
 
+export function unregisterSession(sid: string): void {
+  sessions.delete(sid);
+}
+
 export function getSession(sid: string): Session | undefined {
   return sessions.get(sid);
 }
