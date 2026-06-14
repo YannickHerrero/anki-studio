@@ -19,7 +19,9 @@ export type SessionSource = 'upload' | 'youtube';
 export type Session = {
   id: string;
   createdAt: number;
+  updatedAt: number;
   source: SessionSource;
+  title?: string;
   youtubeUrl?: string;
   videoPath: string;
   videoOriginalName: string;
@@ -54,9 +56,11 @@ export async function createSession(source: SessionSource = 'upload'): Promise<S
   await fs.mkdir(path.join(dir, 'audio'), { recursive: true });
   await fs.mkdir(path.join(dir, 'image'), { recursive: true });
 
+  const now = Date.now();
   const session: Session = {
     id,
-    createdAt: Date.now(),
+    createdAt: now,
+    updatedAt: now,
     source,
     videoPath: '',
     videoOriginalName: '',
@@ -69,6 +73,14 @@ export async function createSession(source: SessionSource = 'upload'): Promise<S
   };
   sessions.set(id, session);
   return session;
+}
+
+export function allSessions(): Session[] {
+  return Array.from(sessions.values());
+}
+
+export function registerSession(session: Session): void {
+  sessions.set(session.id, session);
 }
 
 export function getSession(sid: string): Session | undefined {
