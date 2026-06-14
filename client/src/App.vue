@@ -6,7 +6,9 @@ import { RouterView, RouterLink } from 'vue-router';
   <header class="app-header">
     <RouterLink to="/" class="brand">Anki Studio</RouterLink>
     <nav>
-      <RouterLink to="/">Upload</RouterLink>
+      <RouterLink to="/">Home</RouterLink>
+      <RouterLink to="/upload">Upload</RouterLink>
+      <RouterLink to="/youtube">YouTube</RouterLink>
       <RouterLink to="/settings">Settings</RouterLink>
     </nav>
   </header>
