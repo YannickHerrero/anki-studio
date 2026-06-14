@@ -7,6 +7,7 @@ export type CardSummary = {
   screenshotUrl: string;
   audioReady: boolean;
   screenshotReady: boolean;
+  rev: number;
 };
 
 export type Decision = 'keep' | 'skip';

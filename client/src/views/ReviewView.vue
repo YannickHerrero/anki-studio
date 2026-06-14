@@ -1,7 +1,14 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue';
 import { useRouter } from 'vue-router';
-import { fetchCards, mediaUrl, saveDecisions, type CardSummary, type Decision } from '../api';
+import {
+  fetchCards,
+  mediaUrl,
+  saveDecisions,
+  streamSse,
+  type CardSummary,
+  type Decision,
+} from '../api';
 import { useSessionStore } from '../stores/session';
 
 const props = defineProps<{ sid: string }>();
@@ -12,6 +19,13 @@ const index = ref(0);
 const loading = ref(true);
 const error = ref<string | null>(null);
 const audioEl = ref<HTMLAudioElement | null>(null);
+
+const showRetime = ref(false);
+const retimeSeconds = ref(0);
+const retiming = ref(false);
+const retimeDone = ref(0);
+const retimeTotal = ref(0);
+const retimeError = ref<string | null>(null);
 
 const current = computed<CardSummary | undefined>(() => session.cards[index.value]);
 const currentDecision = computed<Decision | undefined>(() =>
@@ -60,6 +74,47 @@ function onKey(e: KeyboardEvent) {
   }
 }
 
+async function retime(scope: 'all' | 'from-here') {
+  const deltaMs = Math.round(retimeSeconds.value * 1000);
+  if (!deltaMs || !current.value) return;
+  retiming.value = true;
+  retimeError.value = null;
+  retimeDone.value = 0;
+  retimeTotal.value = 0;
+
+  try {
+    await streamSse(
+      `/session/${props.sid}/retime`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          deltaMs,
+          fromIndex: scope === 'from-here' ? current.value.index : 0,
+        }),
+      },
+      ({ event, data }) => {
+        const d = data as { total?: number; done?: number; message?: string };
+        if (event === 'start') retimeTotal.value = d.total ?? 0;
+        else if (event === 'progress') retimeDone.value = d.done ?? 0;
+        else if (event === 'error') retimeError.value = d.message ?? 'retime failed';
+      },
+    );
+    // Refetch so we get updated rev (which cache-busts audio/screenshot URLs).
+    const data = await fetchCards(props.sid);
+    session.cards = data.cards;
+    // Force a re-render of the audio/img by nudging the index ref.
+    const i = index.value;
+    index.value = -1;
+    await new Promise((r) => setTimeout(r, 0));
+    index.value = i;
+  } catch (err) {
+    retimeError.value = err instanceof Error ? err.message : String(err);
+  } finally {
+    retiming.value = false;
+  }
+}
+
 watch(index, () => {
   // autoplay on card change
   if (audioEl.value) {
@@ -104,8 +159,46 @@ function goExport() {
         <span class="counts__item">{{ session.remainingCount }} left</span>
       </div>
       <div class="position">{{ index + 1 }} / {{ session.cards.length }}</div>
-      <button class="ghost" @click="goExport">Done — Export</button>
+      <div class="header-actions">
+        <button class="ghost" @click="showRetime = !showRetime">Retime</button>
+        <button class="ghost" @click="goExport">Done — Export</button>
+      </div>
     </header>
+
+    <div v-if="showRetime" class="retime">
+      <div class="retime__row">
+        <label class="retime__label">Shift</label>
+        <input
+          v-model.number="retimeSeconds"
+          type="number"
+          step="0.05"
+          placeholder="seconds"
+          :disabled="retiming"
+        />
+        <span class="retime__hint">seconds — positive delays, negative advances</span>
+      </div>
+      <div class="retime__row">
+        <button
+          class="primary"
+          :disabled="!retimeSeconds || retiming"
+          @click="retime('all')"
+        >
+          Apply to all
+        </button>
+        <button
+          class="primary"
+          :disabled="!retimeSeconds || retiming"
+          @click="retime('from-here')"
+        >
+          Apply from here onwards
+        </button>
+        <button class="ghost" :disabled="retiming" @click="showRetime = false">Cancel</button>
+      </div>
+      <div v-if="retiming || retimeTotal" class="retime__progress">
+        Re-cutting {{ retimeDone }} / {{ retimeTotal }}
+      </div>
+      <div v-if="retimeError" class="err">{{ retimeError }}</div>
+    </div>
 
     <p v-if="loading" class="muted">Loading…</p>
     <p v-else-if="error" class="err">{{ error }}</p>
@@ -151,6 +244,67 @@ function goExport() {
   justify-content: space-between;
   gap: 14px;
   margin-bottom: 22px;
+}
+.header-actions {
+  display: flex;
+  gap: 8px;
+}
+.retime {
+  background: var(--bBg);
+  border: 1px solid var(--pageLine);
+  border-radius: 6px;
+  padding: 14px 16px;
+  margin-bottom: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.retime__row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.retime__label {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--pageMuted);
+}
+.retime__row input[type='number'] {
+  background: var(--bPanel);
+  border: 1px solid var(--pageLine);
+  border-radius: 5px;
+  padding: 6px 10px;
+  font-size: 14px;
+  font-family: ui-monospace, monospace;
+  color: var(--pageInk);
+  width: 110px;
+}
+.retime__hint {
+  font-size: 12px;
+  color: var(--pageMuted);
+}
+.retime__progress {
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--pageMuted);
+}
+.primary {
+  background: var(--accent);
+  border: 1px solid var(--accent);
+  color: white;
+  padding: 8px 14px;
+  border-radius: 5px;
+  font-size: 12px;
+  cursor: pointer;
+  letter-spacing: 0.04em;
+}
+.primary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 .counts {
   display: flex;
