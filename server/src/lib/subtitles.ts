@@ -1,6 +1,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { parse as parseSubs } from 'subsrt-ts';
+import { parseAss } from './ass.js';
 
 export type SubtitleCue = {
   index: number;
@@ -9,27 +10,31 @@ export type SubtitleCue = {
   text: string;
 };
 
-const ASS_OVERRIDE_RE = /\{[^}]*\}/g;
-const ASS_LINEBREAK_RE = /\\[Nnh]/g;
 const HTML_TAG_RE = /<[^>]+>/g;
 const WHITESPACE_RE = /\s+/g;
 
 function cleanText(raw: string): string {
-  return raw
-    .replace(ASS_OVERRIDE_RE, '')
-    .replace(ASS_LINEBREAK_RE, ' ')
-    .replace(HTML_TAG_RE, '')
-    .replace(WHITESPACE_RE, ' ')
-    .trim();
+  return raw.replace(HTML_TAG_RE, '').replace(WHITESPACE_RE, ' ').trim();
 }
 
 export async function parseSubtitleFile(filePath: string): Promise<SubtitleCue[]> {
   const ext = path.extname(filePath).toLowerCase().replace(/^\./, '');
   const raw = await fs.readFile(filePath, 'utf8');
-  const format = ext === 'ssa' ? 'ass' : ext;
 
-  const captions = parseSubs(raw, { format });
+  if (ext === 'ass' || ext === 'ssa') {
+    // subsrt-ts mishandles ASS (drops the opening `{` of override tags, and eats
+    // the first character of plain dialogue). Use our own parser.
+    const cues: SubtitleCue[] = [];
+    let idx = 0;
+    for (const c of parseAss(raw)) {
+      const text = cleanText(c.text);
+      if (!text) continue;
+      cues.push({ index: idx++, startMs: c.startMs, endMs: c.endMs, text });
+    }
+    return cues;
+  }
 
+  const captions = parseSubs(raw, { format: ext });
   const cues: SubtitleCue[] = [];
   let idx = 0;
   for (const cap of captions) {
