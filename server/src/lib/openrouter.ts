@@ -143,6 +143,74 @@ export function vocabularyToHtml(items: VocabEntry[]): string {
     .join('');
 }
 
+const TRANSLATE_SCHEMA = {
+  type: 'object',
+  properties: {
+    translations: {
+      type: 'array',
+      items: { type: 'string' },
+      description: 'English translations, one per input sentence, in the same order.',
+    },
+  },
+  required: ['translations'],
+  additionalProperties: false,
+};
+
+const TRANSLATE_SYSTEM = `You translate Japanese anime subtitles into natural English.
+You receive the full transcript as a numbered list. Use the surrounding sentences as context
+to disambiguate pronouns, register and references, but return ONE translation per numbered
+sentence. Return JSON matching the schema: translations[i] corresponds to sentence i+1.
+Keep translations concise and natural; preserve any named entities and proper nouns.`;
+
+export async function translateBatch(
+  sentences: string[],
+  opts: EnrichOptions,
+): Promise<string[]> {
+  if (sentences.length === 0) return [];
+
+  const numbered = sentences.map((s, i) => `${i + 1}. ${s}`).join('\n');
+
+  const body = {
+    model: opts.model,
+    messages: [
+      { role: 'system', content: TRANSLATE_SYSTEM },
+      { role: 'user', content: numbered },
+    ],
+    response_format: {
+      type: 'json_schema',
+      json_schema: { name: 'transcript_translation', strict: true, schema: TRANSLATE_SCHEMA },
+    },
+  };
+
+  const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${opts.apiKey}`,
+      'HTTP-Referer': opts.referer ?? 'http://localhost:5173',
+      'X-Title': opts.appName ?? 'Anki Studio',
+    },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`openrouter ${res.status}: ${text.slice(0, 200)}`);
+  }
+  const json = (await res.json()) as ChatResponse;
+  const content = json.choices?.[0]?.message?.content;
+  if (!content) throw new Error('openrouter returned empty content');
+
+  const parsed = JSON.parse(content) as { translations?: string[] };
+  const out = Array.isArray(parsed.translations) ? parsed.translations : [];
+  // Pad / truncate to match input length so callers can rely on indices.
+  if (out.length < sentences.length) {
+    while (out.length < sentences.length) out.push('');
+  } else if (out.length > sentences.length) {
+    out.length = sentences.length;
+  }
+  return out;
+}
+
 export function grammarToHtml(items: GrammarEntry[]): string {
   if (!items.length) return '';
   return items
