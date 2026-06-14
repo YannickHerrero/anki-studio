@@ -4,6 +4,7 @@ import { useRouter } from 'vue-router';
 import {
   fetchCards,
   mediaUrl,
+  mergeWithPrevious,
   saveDecisions,
   streamSse,
   type CardSummary,
@@ -26,6 +27,10 @@ const retiming = ref(false);
 const retimeDone = ref(0);
 const retimeTotal = ref(0);
 const retimeError = ref<string | null>(null);
+
+const merging = ref(false);
+const mergeError = ref<string | null>(null);
+const canMerge = computed(() => index.value > 0 && !!current.value && !merging.value);
 
 const current = computed<CardSummary | undefined>(() => session.cards[index.value]);
 const currentDecision = computed<Decision | undefined>(() =>
@@ -71,6 +76,25 @@ function onKey(e: KeyboardEvent) {
   else if (e.code === 'Space') {
     e.preventDefault();
     replay();
+  } else if (e.key === 'm' || e.key === 'M') {
+    void mergePrev();
+  }
+}
+
+async function mergePrev() {
+  if (!canMerge.value || !current.value) return;
+  merging.value = true;
+  mergeError.value = null;
+  try {
+    const res = await mergeWithPrevious(props.sid, current.value.index);
+    const data = await fetchCards(props.sid);
+    session.cards = data.cards;
+    // Position returned by the server points at the merged card in the new list.
+    index.value = res.newPosition;
+  } catch (err) {
+    mergeError.value = err instanceof Error ? err.message : String(err);
+  } finally {
+    merging.value = false;
   }
 }
 
@@ -160,10 +184,14 @@ function goExport() {
       </div>
       <div class="position">{{ index + 1 }} / {{ session.cards.length }}</div>
       <div class="header-actions">
+        <button class="ghost" :disabled="!canMerge" @click="mergePrev">
+          {{ merging ? 'Merging…' : 'Merge with previous' }}
+        </button>
         <button class="ghost" @click="showRetime = !showRetime">Retime</button>
         <button class="ghost" @click="goExport">Done — Export</button>
       </div>
     </header>
+    <p v-if="mergeError" class="err">{{ mergeError }}</p>
 
     <div v-if="showRetime" class="retime">
       <div class="retime__row">

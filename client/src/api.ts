@@ -50,6 +50,19 @@ export function mediaUrl(path: string): string {
   return `${BASE}${path}`;
 }
 
+export async function mergeWithPrevious(
+  sid: string,
+  cardIndex: number,
+): Promise<{ mergedCardIndex: number; newPosition: number; totalCards: number }> {
+  const res = await fetch(`${BASE}/session/${sid}/merge`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ cardIndex }),
+  });
+  if (!res.ok) throw new Error(`merge failed: ${res.status} ${await res.text()}`);
+  return res.json();
+}
+
 export type SseHandler = (event: { event: string; data: unknown }) => void;
 
 export async function streamSse(
