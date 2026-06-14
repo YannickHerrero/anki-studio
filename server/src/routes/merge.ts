@@ -25,11 +25,16 @@ export async function mergeRoutes(app: FastifyInstance) {
 
     const nextIndex = session.cards.reduce((m, c) => Math.max(m, c.index), -1) + 1;
     const sep = /[\s。．！？!?]$/.test(prev.text) ? '' : ' ';
+    const mergedTranslation =
+      prev.translation || curr.translation
+        ? `${prev.translation ?? ''} ${curr.translation ?? ''}`.replace(/\s+/g, ' ').trim()
+        : undefined;
     const merged: Card = {
       index: nextIndex,
       startMs: Math.min(prev.startMs, curr.startMs),
       endMs: Math.max(prev.endMs, curr.endMs),
       text: `${prev.text}${sep}${curr.text}`.trim(),
+      translation: mergedTranslation,
       audioReady: false,
       screenshotReady: false,
       rev: 0,
