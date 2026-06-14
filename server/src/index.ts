@@ -11,6 +11,7 @@ import { exportRoutes } from './routes/export.js';
 import { retimeRoutes } from './routes/retime.js';
 import { mergeRoutes } from './routes/merge.js';
 import { youtubeRoutes } from './routes/youtube.js';
+import { transcribeRoutes } from './routes/transcribe.js';
 
 async function main() {
   await fs.mkdir(config.tmpDir, { recursive: true });
@@ -31,6 +32,7 @@ async function main() {
   await app.register(retimeRoutes);
   await app.register(mergeRoutes);
   await app.register(youtubeRoutes);
+  await app.register(transcribeRoutes);
 
   await app.listen({ port: config.port, host: config.host });
 }
