@@ -13,6 +13,36 @@ function msToSeconds(ms: number): string {
   return (Math.max(0, ms) / 1000).toFixed(3);
 }
 
+export type ScreenshotOptions = {
+  startMs: number;
+  endMs: number;
+  width?: number;
+  quality?: number;
+};
+
+export async function extractScreenshot(
+  videoPath: string,
+  outPath: string,
+  opts: ScreenshotOptions,
+): Promise<void> {
+  const midMs = Math.round((opts.startMs + opts.endMs) / 2);
+  const width = opts.width ?? 720;
+  await execa(
+    config.ffmpegPath,
+    [
+      '-y',
+      '-loglevel', 'error',
+      '-ss', msToSeconds(midMs),
+      '-i', videoPath,
+      '-frames:v', '1',
+      '-vf', `scale=${width}:-2`,
+      '-q:v', String(opts.quality ?? 4),
+      outPath,
+    ],
+    { stdout: 'ignore' },
+  );
+}
+
 export async function extractAudio(
   videoPath: string,
   outPath: string,
