@@ -29,10 +29,11 @@ export async function sessionRoutes(app: FastifyInstance) {
         text: c.text,
         startMs: c.startMs,
         endMs: c.endMs,
-        audioUrl: `/session/${sid}/media/audio/${c.index}`,
-        screenshotUrl: `/session/${sid}/media/image/${c.index}`,
+        audioUrl: `/session/${sid}/media/audio/${c.index}?r=${c.rev}`,
+        screenshotUrl: `/session/${sid}/media/image/${c.index}?r=${c.rev}`,
         audioReady: c.audioReady,
         screenshotReady: c.screenshotReady,
+        rev: c.rev,
       })),
       decisions: session.decisions,
     };

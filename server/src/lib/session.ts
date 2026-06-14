@@ -9,6 +9,7 @@ export type Decision = 'keep' | 'skip';
 export type Card = SubtitleCue & {
   audioReady: boolean;
   screenshotReady: boolean;
+  rev: number;
 };
 
 export type ProcessingStatus = 'pending' | 'processing' | 'ready' | 'error';

@@ -48,7 +48,12 @@ export async function uploadRoutes(app: FastifyInstance) {
 
     const cues = await parseSubtitleFile(session.subtitlePath);
     session.cues = cues;
-    session.cards = cues.map((c) => ({ ...c, audioReady: false, screenshotReady: false }));
+    session.cards = cues.map((c) => ({
+      ...c,
+      audioReady: false,
+      screenshotReady: false,
+      rev: 0,
+    }));
 
     return { sessionId: session.id, cueCount: cues.length };
   });
