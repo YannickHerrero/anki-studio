@@ -241,6 +241,7 @@ function goExport() {
           <span class="rule__bar"></span><span class="rule__label">Sentence</span>
         </div>
         <p class="sentence">{{ current.text }}</p>
+        <p v-if="current.translation" class="translation">{{ current.translation }}</p>
         <audio
           v-if="current.audioReady"
           ref="audioEl"
@@ -422,6 +423,14 @@ button.ghost {
   line-height: 1.7;
   color: var(--bInk);
   margin: 0;
+}
+.translation {
+  font-size: 15px;
+  line-height: 1.55;
+  color: var(--bMuted);
+  margin: 0;
+  border-left: 2px solid var(--accent);
+  padding-left: 10px;
 }
 audio {
   width: 100%;
