@@ -65,7 +65,10 @@ export async function exportRoutes(app: FastifyInstance) {
       let done = 0;
       const enrichments = new Map<number, Enrichment>();
       await mapWithConcurrency(kept, 5, async (card) => {
-        const e = await enrichSentence(card.text, {
+        const input = card.translation
+          ? { sentence: card.text, existingTranslation: card.translation }
+          : { sentence: card.text };
+        const e = await enrichSentence(input, {
           apiKey: body.openrouterKey!,
           model: body.model!,
           appName: body.appName,

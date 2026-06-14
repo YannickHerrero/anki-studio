@@ -16,53 +16,75 @@ export type Enrichment = {
   grammar: GrammarEntry[];
 };
 
-const SCHEMA = {
+const VOCAB_PROP = {
+  type: 'array',
+  items: {
+    type: 'object',
+    properties: {
+      word: { type: 'string', description: 'Dictionary form of the word in Japanese.' },
+      reading: { type: 'string', description: 'Hiragana reading of the word.' },
+      gloss: { type: 'string', description: 'Short English gloss.' },
+      isTarget: {
+        type: 'boolean',
+        description: 'true if this is the most notable / target word.',
+      },
+    },
+    required: ['word', 'reading', 'gloss'],
+    additionalProperties: false,
+  },
+} as const;
+
+const GRAMMAR_PROP = {
+  type: 'array',
+  items: {
+    type: 'object',
+    properties: {
+      pattern: { type: 'string', description: 'Grammar pattern, e.g. 〜てから.' },
+      explanation: {
+        type: 'string',
+        description: 'One short paragraph explaining the pattern in context.',
+      },
+    },
+    required: ['pattern', 'explanation'],
+    additionalProperties: false,
+  },
+} as const;
+
+const SCHEMA_FULL = {
   type: 'object',
   properties: {
     translation: {
       type: 'string',
       description: 'Natural English translation of the sentence.',
     },
-    vocabulary: {
-      type: 'array',
-      items: {
-        type: 'object',
-        properties: {
-          word: { type: 'string', description: 'Dictionary form of the word in Japanese.' },
-          reading: { type: 'string', description: 'Hiragana reading of the word.' },
-          gloss: { type: 'string', description: 'Short English gloss.' },
-          isTarget: {
-            type: 'boolean',
-            description: 'true if this is the most notable / target word.',
-          },
-        },
-        required: ['word', 'reading', 'gloss'],
-        additionalProperties: false,
-      },
-    },
-    grammar: {
-      type: 'array',
-      items: {
-        type: 'object',
-        properties: {
-          pattern: { type: 'string', description: 'Grammar pattern, e.g. 〜てから.' },
-          explanation: {
-            type: 'string',
-            description: 'One short paragraph explaining the pattern in context.',
-          },
-        },
-        required: ['pattern', 'explanation'],
-        additionalProperties: false,
-      },
-    },
+    vocabulary: VOCAB_PROP,
+    grammar: GRAMMAR_PROP,
   },
   required: ['translation', 'vocabulary', 'grammar'],
   additionalProperties: false,
 };
 
-const SYSTEM_PROMPT = `You are a Japanese language tutor producing flashcard annotations.
+const SCHEMA_NO_TRANSLATION = {
+  type: 'object',
+  properties: {
+    vocabulary: VOCAB_PROP,
+    grammar: GRAMMAR_PROP,
+  },
+  required: ['vocabulary', 'grammar'],
+  additionalProperties: false,
+};
+
+const SYSTEM_FULL = `You are a Japanese language tutor producing flashcard annotations.
 Given a single Japanese sentence taken from anime dialogue, return:
 - a natural English translation,
+- 1 to 4 vocabulary entries covering the most useful words (skip particles and trivial words),
+- 0 to 2 grammar notes for notable patterns or constructions.
+For vocabulary, give the dictionary form and a short gloss. Pick at most one item as "isTarget" — the word a learner would most want to study.
+Be concise. Return JSON that matches the schema.`;
+
+const SYSTEM_NO_TRANSLATION = `You are a Japanese language tutor producing flashcard annotations.
+You will be given a Japanese sentence and its existing English translation.
+Return only:
 - 1 to 4 vocabulary entries covering the most useful words (skip particles and trivial words),
 - 0 to 2 grammar notes for notable patterns or constructions.
 For vocabulary, give the dictionary form and a short gloss. Pick at most one item as "isTarget" — the word a learner would most want to study.
@@ -84,16 +106,29 @@ export type EnrichOptions = {
   appName?: string;
 };
 
-export async function enrichSentence(sentence: string, opts: EnrichOptions): Promise<Enrichment> {
+export type EnrichInput =
+  | { sentence: string; existingTranslation?: undefined }
+  | { sentence: string; existingTranslation: string };
+
+export async function enrichSentence(input: EnrichInput, opts: EnrichOptions): Promise<Enrichment> {
+  const useExisting = !!input.existingTranslation;
+  const userContent = useExisting
+    ? `Sentence: ${input.sentence}\nExisting translation: ${input.existingTranslation}`
+    : input.sentence;
+
   const body = {
     model: opts.model,
     messages: [
-      { role: 'system', content: SYSTEM_PROMPT },
-      { role: 'user', content: sentence },
+      { role: 'system', content: useExisting ? SYSTEM_NO_TRANSLATION : SYSTEM_FULL },
+      { role: 'user', content: userContent },
     ],
     response_format: {
       type: 'json_schema',
-      json_schema: { name: 'card_enrichment', strict: true, schema: SCHEMA },
+      json_schema: {
+        name: 'card_enrichment',
+        strict: true,
+        schema: useExisting ? SCHEMA_NO_TRANSLATION : SCHEMA_FULL,
+      },
     },
   };
 
@@ -117,9 +152,9 @@ export async function enrichSentence(sentence: string, opts: EnrichOptions): Pro
   const content = json.choices?.[0]?.message?.content;
   if (!content) throw new Error('openrouter returned empty content');
 
-  const parsed = JSON.parse(content) as Enrichment;
+  const parsed = JSON.parse(content) as Partial<Enrichment>;
   return {
-    translation: parsed.translation ?? '',
+    translation: useExisting ? input.existingTranslation : parsed.translation ?? '',
     vocabulary: Array.isArray(parsed.vocabulary) ? parsed.vocabulary : [],
     grammar: Array.isArray(parsed.grammar) ? parsed.grammar : [],
   };
