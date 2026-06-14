@@ -10,6 +10,7 @@ export const MODEL_PRESETS = [
 
 type Stored = {
   openrouterKey?: string;
+  openaiKey?: string;
   model?: string;
 };
 
@@ -26,17 +27,24 @@ function load(): Stored {
 export const useSettingsStore = defineStore('settings', () => {
   const initial = load();
   const openrouterKey = ref(initial.openrouterKey ?? '');
+  const openaiKey = ref(initial.openaiKey ?? '');
   const model = ref(initial.model ?? MODEL_PRESETS[0].id);
 
   const isConfigured = computed(() => openrouterKey.value.trim().length > 0);
+  const isYoutubeReady = computed(
+    () => openrouterKey.value.trim().length > 0 && openaiKey.value.trim().length > 0,
+  );
 
   watch(
-    [openrouterKey, model],
-    ([key, m]) => {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify({ openrouterKey: key, model: m }));
+    [openrouterKey, openaiKey, model],
+    ([orKey, oaKey, m]) => {
+      localStorage.setItem(
+        STORAGE_KEY,
+        JSON.stringify({ openrouterKey: orKey, openaiKey: oaKey, model: m }),
+      );
     },
     { deep: true },
   );
 
-  return { openrouterKey, model, isConfigured };
+  return { openrouterKey, openaiKey, model, isConfigured, isYoutubeReady };
 });

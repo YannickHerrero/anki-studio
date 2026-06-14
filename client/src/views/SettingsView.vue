@@ -3,27 +3,58 @@ import { ref } from 'vue';
 import { useSettingsStore, MODEL_PRESETS } from '../stores/settings';
 
 const settings = useSettingsStore();
-const showKey = ref(false);
-const testing = ref(false);
-const testResult = ref<{ ok: boolean; message: string } | null>(null);
+const showOpenrouter = ref(false);
+const showOpenai = ref(false);
+const testingOpenrouter = ref(false);
+const testingOpenai = ref(false);
+const openrouterResult = ref<{ ok: boolean; message: string } | null>(null);
+const openaiResult = ref<{ ok: boolean; message: string } | null>(null);
 
-async function testKey() {
-  testing.value = true;
-  testResult.value = null;
+async function testOpenrouter() {
+  testingOpenrouter.value = true;
+  openrouterResult.value = null;
   try {
     const res = await fetch('https://openrouter.ai/api/v1/auth/key', {
       headers: { Authorization: `Bearer ${settings.openrouterKey.trim()}` },
     });
     if (!res.ok) {
-      testResult.value = { ok: false, message: `HTTP ${res.status}` };
+      openrouterResult.value = { ok: false, message: `HTTP ${res.status}` };
     } else {
       const json = await res.json();
-      testResult.value = { ok: true, message: `OK — label: ${json.data?.label ?? 'unknown'}` };
+      openrouterResult.value = {
+        ok: true,
+        message: `OK — label: ${json.data?.label ?? 'unknown'}`,
+      };
     }
   } catch (err) {
-    testResult.value = { ok: false, message: err instanceof Error ? err.message : String(err) };
+    openrouterResult.value = {
+      ok: false,
+      message: err instanceof Error ? err.message : String(err),
+    };
   } finally {
-    testing.value = false;
+    testingOpenrouter.value = false;
+  }
+}
+
+async function testOpenai() {
+  testingOpenai.value = true;
+  openaiResult.value = null;
+  try {
+    const res = await fetch('https://api.openai.com/v1/models', {
+      headers: { Authorization: `Bearer ${settings.openaiKey.trim()}` },
+    });
+    if (!res.ok) {
+      openaiResult.value = { ok: false, message: `HTTP ${res.status}` };
+    } else {
+      openaiResult.value = { ok: true, message: 'OK' };
+    }
+  } catch (err) {
+    openaiResult.value = {
+      ok: false,
+      message: err instanceof Error ? err.message : String(err),
+    };
+  } finally {
+    testingOpenai.value = false;
   }
 }
 </script>
@@ -32,8 +63,9 @@ async function testKey() {
   <section class="settings">
     <h1>Settings</h1>
     <p class="settings__intro">
-      Anki Studio uses your OpenRouter API key to generate translation, vocabulary and grammar
-      notes for the cards you keep. The key stays in your browser.
+      Keys are stored only in your browser's <code>localStorage</code>. The OpenRouter key powers
+      enrichment (translation, vocabulary, grammar). The OpenAI key is only used by the YouTube
+      flow to transcribe audio with Whisper.
     </p>
 
     <label class="field">
@@ -41,13 +73,13 @@ async function testKey() {
       <div class="field__row">
         <input
           v-model="settings.openrouterKey"
-          :type="showKey ? 'text' : 'password'"
+          :type="showOpenrouter ? 'text' : 'password'"
           placeholder="sk-or-v1-..."
           autocomplete="off"
           spellcheck="false"
         />
-        <button type="button" class="ghost" @click="showKey = !showKey">
-          {{ showKey ? 'Hide' : 'Show' }}
+        <button type="button" class="ghost" @click="showOpenrouter = !showOpenrouter">
+          {{ showOpenrouter ? 'Hide' : 'Show' }}
         </button>
       </div>
     </label>
@@ -73,17 +105,53 @@ async function testKey() {
       <button
         type="button"
         class="primary"
-        :disabled="!settings.isConfigured || testing"
-        @click="testKey"
+        :disabled="!settings.isConfigured || testingOpenrouter"
+        @click="testOpenrouter"
       >
-        {{ testing ? 'Testing…' : 'Test key' }}
+        {{ testingOpenrouter ? 'Testing…' : 'Test OpenRouter key' }}
       </button>
       <span
-        v-if="testResult"
+        v-if="openrouterResult"
         class="result"
-        :class="{ 'result--ok': testResult.ok, 'result--err': !testResult.ok }"
+        :class="{ 'result--ok': openrouterResult.ok, 'result--err': !openrouterResult.ok }"
       >
-        {{ testResult.message }}
+        {{ openrouterResult.message }}
+      </span>
+    </div>
+
+    <hr class="sep" />
+
+    <label class="field">
+      <span class="field__label">OpenAI API key — for YouTube transcription only</span>
+      <div class="field__row">
+        <input
+          v-model="settings.openaiKey"
+          :type="showOpenai ? 'text' : 'password'"
+          placeholder="sk-..."
+          autocomplete="off"
+          spellcheck="false"
+        />
+        <button type="button" class="ghost" @click="showOpenai = !showOpenai">
+          {{ showOpenai ? 'Hide' : 'Show' }}
+        </button>
+      </div>
+    </label>
+
+    <div class="actions">
+      <button
+        type="button"
+        class="primary"
+        :disabled="!settings.openaiKey || testingOpenai"
+        @click="testOpenai"
+      >
+        {{ testingOpenai ? 'Testing…' : 'Test OpenAI key' }}
+      </button>
+      <span
+        v-if="openaiResult"
+        class="result"
+        :class="{ 'result--ok': openaiResult.ok, 'result--err': !openaiResult.ok }"
+      >
+        {{ openaiResult.message }}
       </span>
     </div>
   </section>
@@ -174,5 +242,17 @@ button:disabled {
 }
 .result--err {
   color: #c83a3a;
+}
+.sep {
+  border: none;
+  border-top: 1px solid var(--pageLine);
+  margin: 30px 0 24px;
+}
+code {
+  font-family: ui-monospace, monospace;
+  font-size: 12px;
+  background: var(--bPanel);
+  padding: 1px 5px;
+  border-radius: 3px;
 }
 </style>
