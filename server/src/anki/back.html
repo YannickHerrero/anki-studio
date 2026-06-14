@@ -1,0 +1,45 @@
+<div class="js-card">
+  <div class="js-card__inner js-card__back">
+    {{#Screenshot}}<div class="js-screenshot">{{Screenshot}}</div>{{/Screenshot}}
+
+    <div class="js-section js-section--sentence">
+      <div class="js-sentence js-sentence--back">{{furigana:Expression}}</div>
+    </div>
+
+    {{#Translation}}
+    <div class="js-section">
+      <div class="js-panel">
+        <div class="js-rule">
+          <span class="js-rule__bar"></span>
+          <span class="js-rule__label">Meaning</span>
+        </div>
+        <div class="js-translation">{{Translation}}</div>
+      </div>
+    </div>
+    {{/Translation}}
+
+    {{#Vocabulary}}
+    <div class="js-section">
+      <div class="js-rule">
+        <span class="js-rule__bar"></span>
+        <span class="js-rule__label">Vocabulary</span>
+      </div>
+      <div class="js-vocabulary">{{Vocabulary}}</div>
+    </div>
+    {{/Vocabulary}}
+
+    {{#Grammar}}
+    <div class="js-section">
+      <div class="js-panel">
+        <div class="js-rule">
+          <span class="js-rule__bar"></span>
+          <span class="js-rule__label">Grammar</span>
+        </div>
+        <div class="js-grammar">{{Grammar}}</div>
+      </div>
+    </div>
+    {{/Grammar}}
+  </div>
+</div>
+
+{{#Audio}}<div class="js-audio">{{Audio}}</div>{{/Audio}}

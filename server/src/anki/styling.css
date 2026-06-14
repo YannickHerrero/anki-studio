@@ -1,0 +1,199 @@
+@import url('https://fonts.googleapis.com/css2?family=Zen+Kaku+Gothic+New:wght@400;500;700&family=Shippori+Mincho:wght@500;600&display=swap');
+
+.card {
+  background: #e7e4de;
+  font-family: 'Zen Kaku Gothic New', -apple-system, BlinkMacSystemFont, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  --bBg: #fbfbfc;
+  --bInk: #1b1e23;
+  --bMuted: #9298a1;
+  --bLine: #ecedf1;
+  --bPanel: #f4f5f7;
+  --bShadow: rgba(36, 33, 28, 0.13);
+  --accent: #3f7d5f;
+}
+
+.card.nightMode {
+  background: #141519;
+  --bBg: #16181c;
+  --bInk: #e7e9ed;
+  --bMuted: #787d86;
+  --bLine: #262931;
+  --bPanel: #1c1f24;
+  --bShadow: rgba(0, 0, 0, 0.5);
+  --accent: #84c9a6;
+}
+
+.js-card {
+  display: flex;
+  justify-content: center;
+  padding: 24px 16px;
+}
+
+.js-card__inner {
+  width: 100%;
+  max-width: 720px;
+  background: var(--bBg);
+  border: 1px solid var(--bLine);
+  border-radius: 11px;
+  box-shadow: 0 14px 44px var(--bShadow);
+  overflow: hidden;
+  text-align: left;
+}
+
+.js-card__front {
+  padding: 56px 38px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 240px;
+}
+
+.js-rule {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+
+.js-rule__bar {
+  width: 14px;
+  height: 2px;
+  background: var(--accent);
+}
+
+.js-rule__label {
+  font-size: 11px;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--bMuted);
+  font-weight: 700;
+}
+
+.js-sentence {
+  font-family: 'Zen Kaku Gothic New', sans-serif;
+  font-weight: 500;
+  font-size: 28px;
+  line-height: 1.85;
+  color: var(--bInk);
+  letter-spacing: 0.01em;
+  margin-top: 24px;
+}
+
+.js-card__front .js-sentence {
+  text-align: center;
+}
+
+.js-sentence--back {
+  font-size: 24px;
+  line-height: 2.05;
+  margin-top: 0;
+}
+
+.js-sentence ruby {
+  ruby-align: center;
+}
+
+.js-sentence rt {
+  font-weight: 400;
+  font-size: 0.44em;
+  letter-spacing: 0.01em;
+  opacity: 0.82;
+  transform: translateY(2px);
+}
+
+.js-screenshot img {
+  width: 100%;
+  display: block;
+  border-bottom: 1px solid var(--bLine);
+}
+
+.js-section {
+  padding: 18px 28px 0;
+}
+
+.js-section--sentence {
+  padding-top: 22px;
+}
+
+.js-section:last-child {
+  padding-bottom: 26px;
+}
+
+.js-panel {
+  background: var(--bPanel);
+  border-radius: 6px;
+  padding: 14px 16px;
+}
+
+.js-panel .js-rule {
+  margin-bottom: 8px;
+}
+
+.js-translation {
+  font-size: 15px;
+  line-height: 1.55;
+  color: var(--bInk);
+}
+
+.js-vocabulary {
+  margin-top: 10px;
+}
+
+.js-vocab-item {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding: 7px 0;
+}
+
+.js-vocab-item--target {
+  border-left: 2px solid var(--accent);
+  padding-left: 10px;
+  margin-left: -12px;
+}
+
+.js-vocab-item__head {
+  font-family: 'Zen Kaku Gothic New', sans-serif;
+  font-weight: 700;
+  font-size: 16px;
+  color: var(--bInk);
+  min-width: 62px;
+}
+
+.js-vocab-item--target .js-vocab-item__head {
+  color: var(--accent);
+}
+
+.js-vocab-item__reading {
+  font-size: 11px;
+  color: var(--bMuted);
+  min-width: 54px;
+}
+
+.js-vocab-item__gloss {
+  font-size: 13px;
+  color: var(--bInk);
+}
+
+.js-grammar__title {
+  font-family: 'Zen Kaku Gothic New', sans-serif;
+  font-weight: 700;
+  font-size: 16px;
+  color: var(--accent);
+  margin-bottom: 5px;
+}
+
+.js-grammar__body {
+  font-size: 13px;
+  line-height: 1.7;
+  color: var(--bInk);
+}
+
+.js-grammar__entry + .js-grammar__entry {
+  margin-top: 12px;
+}
+
+.js-audio {
+  display: none;
+}
