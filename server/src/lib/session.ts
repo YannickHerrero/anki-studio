@@ -10,6 +10,7 @@ export type Card = SubtitleCue & {
   audioReady: boolean;
   screenshotReady: boolean;
   rev: number;
+  exported?: boolean;
 };
 
 export type ProcessingStatus = 'pending' | 'processing' | 'ready' | 'error';

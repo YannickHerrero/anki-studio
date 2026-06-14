@@ -18,6 +18,8 @@ type ExportBody = {
   openrouterKey?: string;
   model?: string;
   appName?: string;
+  /** Include cards that were already shipped in a previous .apkg. Default false. */
+  includeExported?: boolean;
 };
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -47,9 +49,16 @@ export async function exportRoutes(app: FastifyInstance) {
       return reply.code(400).send({ error: 'openrouterKey and model are required' });
     }
 
-    const kept = session.cards.filter((c) => session.decisions[c.index] === 'keep');
+    const allKept = session.cards.filter((c) => session.decisions[c.index] === 'keep');
+    const kept = body.includeExported
+      ? allKept
+      : allKept.filter((c) => !c.exported);
     if (kept.length === 0) {
-      return reply.code(400).send({ error: 'no cards marked as keep' });
+      return reply.code(400).send({
+        error: body.includeExported
+          ? 'no cards marked as keep'
+          : 'no new kept cards — review more or pass includeExported to re-export',
+      });
     }
 
     reply.raw.writeHead(200, {
@@ -120,6 +129,8 @@ export async function exportRoutes(app: FastifyInstance) {
       session.errorMessage = undefined;
       session.lastApkgPath = outPath;
       session.lastApkgName = outName;
+      // Mark each card we just shipped so the next export skips it by default.
+      for (const card of kept) card.exported = true;
       persistSession(session, { immediate: true });
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);

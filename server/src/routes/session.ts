@@ -10,6 +10,9 @@ import { deleteSession, persistSession } from '../lib/persistence.js';
 function summarize(s: ReturnType<typeof allSessions>[number]) {
   const kept = Object.values(s.decisions).filter((d) => d === 'keep').length;
   const skipped = Object.values(s.decisions).filter((d) => d === 'skip').length;
+  const exported = s.cards.filter(
+    (c) => c.exported && s.decisions[c.index] === 'keep',
+  ).length;
   return {
     id: s.id,
     source: s.source,
@@ -22,6 +25,8 @@ function summarize(s: ReturnType<typeof allSessions>[number]) {
     totalCards: s.cards.length,
     keptCount: kept,
     skippedCount: skipped,
+    exportedCount: exported,
+    pendingExportCount: kept - exported,
     hasExport: !!s.lastApkgPath,
   };
 }
@@ -78,6 +83,7 @@ export async function sessionRoutes(app: FastifyInstance) {
         audioReady: c.audioReady,
         screenshotReady: c.screenshotReady,
         rev: c.rev,
+        exported: !!c.exported,
       })),
       decisions: session.decisions,
     };
