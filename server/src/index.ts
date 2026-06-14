@@ -1,13 +1,22 @@
+import fs from 'node:fs/promises';
 import Fastify from 'fastify';
 import cors from '@fastify/cors';
+import multipart from '@fastify/multipart';
 import { config } from './config.js';
+import { uploadRoutes } from './routes/upload.js';
 
 async function main() {
+  await fs.mkdir(config.tmpDir, { recursive: true });
+
   const app = Fastify({ logger: true });
 
   await app.register(cors, { origin: true });
+  await app.register(multipart, {
+    limits: { fileSize: 5 * 1024 * 1024 * 1024 }, // 5 GiB
+  });
 
   app.get('/health', async () => ({ ok: true }));
+  await app.register(uploadRoutes);
 
   await app.listen({ port: config.port, host: config.host });
 }
