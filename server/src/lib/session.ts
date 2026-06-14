@@ -25,6 +25,8 @@ export type Session = {
   decisions: Record<number, Decision>;
   status: ProcessingStatus;
   errorMessage?: string;
+  lastApkgPath?: string;
+  lastApkgName?: string;
 };
 
 const sessions = new Map<string, Session>();
