@@ -9,6 +9,7 @@ export type CardSummary = {
   audioReady: boolean;
   screenshotReady: boolean;
   rev: number;
+  exported: boolean;
 };
 
 export type Decision = 'keep' | 'skip';

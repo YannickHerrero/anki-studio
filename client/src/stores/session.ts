@@ -15,6 +15,10 @@ export const useSessionStore = defineStore('session', () => {
     () => Object.values(decisions.value).filter((d) => d === 'skip').length,
   );
   const remainingCount = computed(() => cards.value.length - keptCount.value - skippedCount.value);
+  const alreadyExportedCount = computed(
+    () => cards.value.filter((c) => c.exported && decisions.value[c.index] === 'keep').length,
+  );
+  const pendingExportCount = computed(() => keptCount.value - alreadyExportedCount.value);
 
   function reset() {
     sessionId.value = null;
@@ -31,6 +35,8 @@ export const useSessionStore = defineStore('session', () => {
     keptCount,
     skippedCount,
     remainingCount,
+    alreadyExportedCount,
+    pendingExportCount,
     reset,
   };
 });
