@@ -43,6 +43,25 @@ export async function extractScreenshot(
   );
 }
 
+export async function extractFullAudio(videoPath: string, outPath: string): Promise<void> {
+  // Mono 16k MP3 keeps the file well under Whisper's 25 MB ceiling.
+  await execa(
+    config.ffmpegPath,
+    [
+      '-y',
+      '-loglevel', 'error',
+      '-i', videoPath,
+      '-vn',
+      '-ac', '1',
+      '-ar', '16000',
+      '-c:a', 'libmp3lame',
+      '-b:a', '64k',
+      outPath,
+    ],
+    { stdout: 'ignore' },
+  );
+}
+
 export async function extractAudio(
   videoPath: string,
   outPath: string,

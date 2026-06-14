@@ -10,6 +10,7 @@ import { sessionRoutes } from './routes/session.js';
 import { exportRoutes } from './routes/export.js';
 import { retimeRoutes } from './routes/retime.js';
 import { mergeRoutes } from './routes/merge.js';
+import { youtubeRoutes } from './routes/youtube.js';
 
 async function main() {
   await fs.mkdir(config.tmpDir, { recursive: true });
@@ -29,6 +30,7 @@ async function main() {
   await app.register(exportRoutes);
   await app.register(retimeRoutes);
   await app.register(mergeRoutes);
+  await app.register(youtubeRoutes);
 
   await app.listen({ port: config.port, host: config.host });
 }
