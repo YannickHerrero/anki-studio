@@ -9,7 +9,9 @@ export async function sessionRoutes(app: FastifyInstance) {
 
     return {
       id: session.id,
+      source: session.source,
       status: session.status,
+      youtubeUrl: session.youtubeUrl,
       videoOriginalName: session.videoOriginalName,
       subtitleOriginalName: session.subtitleOriginalName,
       cueCount: session.cards.length,
@@ -24,9 +26,11 @@ export async function sessionRoutes(app: FastifyInstance) {
     if (!session) return reply.code(404).send({ error: 'unknown session' });
 
     return {
+      source: session.source,
       cards: session.cards.map((c) => ({
         index: c.index,
         text: c.text,
+        translation: c.translation,
         startMs: c.startMs,
         endMs: c.endMs,
         audioUrl: `/session/${sid}/media/audio/${c.index}?r=${c.rev}`,

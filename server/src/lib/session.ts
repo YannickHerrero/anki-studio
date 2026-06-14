@@ -14,9 +14,13 @@ export type Card = SubtitleCue & {
 
 export type ProcessingStatus = 'pending' | 'processing' | 'ready' | 'error';
 
+export type SessionSource = 'upload' | 'youtube';
+
 export type Session = {
   id: string;
   createdAt: number;
+  source: SessionSource;
+  youtubeUrl?: string;
   videoPath: string;
   videoOriginalName: string;
   subtitlePath: string;
@@ -44,7 +48,7 @@ export function screenshotPath(sid: string, index: number): string {
   return path.join(sessionDir(sid), 'image', `${index}.jpg`);
 }
 
-export async function createSession(): Promise<Session> {
+export async function createSession(source: SessionSource = 'upload'): Promise<Session> {
   const id = randomUUID();
   const dir = sessionDir(id);
   await fs.mkdir(path.join(dir, 'audio'), { recursive: true });
@@ -53,6 +57,7 @@ export async function createSession(): Promise<Session> {
   const session: Session = {
     id,
     createdAt: Date.now(),
+    source,
     videoPath: '',
     videoOriginalName: '',
     subtitlePath: '',

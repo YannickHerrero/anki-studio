@@ -8,6 +8,7 @@ export type SubtitleCue = {
   startMs: number;
   endMs: number;
   text: string;
+  translation?: string;
 };
 
 const HTML_TAG_RE = /<[^>]+>/g;
