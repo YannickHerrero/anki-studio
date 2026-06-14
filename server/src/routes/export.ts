@@ -11,6 +11,7 @@ import {
   type Enrichment,
 } from '../lib/openrouter.js';
 import { mapWithConcurrency } from '../lib/pool.js';
+import { persistSession } from '../lib/persistence.js';
 
 type ExportBody = {
   deckName?: string;
@@ -119,6 +120,7 @@ export async function exportRoutes(app: FastifyInstance) {
       session.errorMessage = undefined;
       session.lastApkgPath = outPath;
       session.lastApkgName = outName;
+      persistSession(session, { immediate: true });
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       write('error', { message });

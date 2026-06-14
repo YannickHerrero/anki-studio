@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { requireSession } from '../lib/session.js';
 import { translateBatch } from '../lib/openrouter.js';
+import { persistSession } from '../lib/persistence.js';
 
 type TranslateBody = {
   openrouterKey?: string;
@@ -44,6 +45,7 @@ export async function translateRoutes(app: FastifyInstance) {
         const cue = session.cues.find((c) => c.index === card.index);
         if (cue) cue.translation = t;
       });
+      persistSession(session, { immediate: true });
       write('done', { translatedCount: translations.length });
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);

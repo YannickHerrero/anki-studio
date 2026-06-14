@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { audioPath, requireSession, screenshotPath } from '../lib/session.js';
 import { extractAudio, extractScreenshot } from '../lib/ffmpeg.js';
 import { mapWithConcurrency } from '../lib/pool.js';
+import { persistSession } from '../lib/persistence.js';
 
 type RetimeBody = {
   deltaMs?: number;
@@ -67,6 +68,7 @@ export async function retimeRoutes(app: FastifyInstance) {
         write('progress', { done, total: affected.length });
       });
 
+      persistSession(session, { immediate: true });
       write('done', { affected: affected.length });
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);

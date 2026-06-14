@@ -1,5 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { getSession, requireSession, type Decision } from '../lib/session.js';
+import { persistSession } from '../lib/persistence.js';
 
 export async function sessionRoutes(app: FastifyInstance) {
   app.get('/session/:sid', async (req, reply) => {
@@ -60,6 +61,7 @@ export async function sessionRoutes(app: FastifyInstance) {
         delete session.decisions[idx];
       }
     }
+    persistSession(session);
     return { ok: true, decisions: session.decisions };
   });
 }

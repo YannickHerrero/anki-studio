@@ -3,6 +3,7 @@ import type { FastifyInstance } from 'fastify';
 import { createSession, sessionDir } from '../lib/session.js';
 import { downloadVideo, isValidYouTubeUrl, probe, validateYtDlp } from '../lib/ytdlp.js';
 import { extractFullAudio } from '../lib/ffmpeg.js';
+import { persistSession } from '../lib/persistence.js';
 
 type YouTubeBody = {
   url?: string;
@@ -38,10 +39,13 @@ export async function youtubeRoutes(app: FastifyInstance) {
     try {
       session = await createSession('youtube');
       session.youtubeUrl = url;
+      persistSession(session, { immediate: true });
       write('session', { sessionId: session.id });
 
       // Probe for title + duration so we can show them in the UI.
       const meta = await probe(url);
+      session.title = meta.title;
+      persistSession(session);
       write('meta', { title: meta.title, durationMs: meta.durationMs });
 
       // Download video. Progress is yt-dlp percentage 0..100.
@@ -58,6 +62,7 @@ export async function youtubeRoutes(app: FastifyInstance) {
       write('audio', { stage: 'extracting' });
       const fullAudio = path.join(dir, 'full.mp3');
       await extractFullAudio(videoPath, fullAudio);
+      persistSession(session, { immediate: true });
       write('audio', { stage: 'done' });
 
       write('done', {
@@ -70,6 +75,7 @@ export async function youtubeRoutes(app: FastifyInstance) {
       if (session) {
         session.status = 'error';
         session.errorMessage = message;
+        persistSession(session, { immediate: true });
       }
       write('error', { message });
     } finally {

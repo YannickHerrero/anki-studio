@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { audioPath, requireSession, screenshotPath, type Card } from '../lib/session.js';
 import { extractAudio, extractScreenshot } from '../lib/ffmpeg.js';
+import { persistSession } from '../lib/persistence.js';
 
 type MergeBody = {
   cardIndex?: number;
@@ -58,6 +59,7 @@ export async function mergeRoutes(app: FastifyInstance) {
     session.cards.splice(pos - 1, 2, merged);
     delete session.decisions[prev.index];
     delete session.decisions[curr.index];
+    persistSession(session, { immediate: true });
 
     return {
       mergedCardIndex: merged.index,

@@ -4,6 +4,7 @@ import { pipeline } from 'node:stream/promises';
 import type { FastifyInstance } from 'fastify';
 import { createSession, sessionDir } from '../lib/session.js';
 import { parseSubtitleFile } from '../lib/subtitles.js';
+import { persistSession } from '../lib/persistence.js';
 
 const SUBTITLE_EXTS = new Set(['srt', 'ass', 'ssa', 'vtt']);
 
@@ -54,6 +55,8 @@ export async function uploadRoutes(app: FastifyInstance) {
       screenshotReady: false,
       rev: 0,
     }));
+    session.title = session.videoOriginalName;
+    persistSession(session, { immediate: true });
 
     return { sessionId: session.id, cueCount: cues.length };
   });

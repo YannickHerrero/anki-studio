@@ -13,11 +13,15 @@ import { mergeRoutes } from './routes/merge.js';
 import { youtubeRoutes } from './routes/youtube.js';
 import { transcribeRoutes } from './routes/transcribe.js';
 import { translateRoutes } from './routes/translate.js';
+import { rehydrateSessions } from './lib/persistence.js';
 
 async function main() {
   await fs.mkdir(config.tmpDir, { recursive: true });
 
+  const loaded = await rehydrateSessions();
+
   const app = Fastify({ logger: true });
+  app.log.info({ loaded }, 'rehydrated sessions from disk');
 
   await app.register(cors, { origin: true });
   await app.register(multipart, {

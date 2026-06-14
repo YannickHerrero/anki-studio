@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { audioPath, requireSession, screenshotPath } from '../lib/session.js';
 import { extractAudio, extractScreenshot } from '../lib/ffmpeg.js';
 import { mapWithConcurrency } from '../lib/pool.js';
+import { persistSession } from '../lib/persistence.js';
 
 type SseEvent = { event: string; data: unknown };
 
@@ -27,6 +28,7 @@ export async function processRoutes(app: FastifyInstance) {
     const write = (e: SseEvent) => reply.raw.write(sseLine(e));
 
     session.status = 'processing';
+    persistSession(session, { immediate: true });
     write({ event: 'start', data: { total: session.cards.length } });
 
     try {
@@ -45,6 +47,7 @@ export async function processRoutes(app: FastifyInstance) {
           }).then(() => {
             card.audioReady = true;
             audioDone++;
+            persistSession(session);
             write({ event: 'progress', data: { kind: 'audio', done: audioDone, total } });
           }),
           extractScreenshot(session.videoPath, shotOut, {
@@ -53,16 +56,19 @@ export async function processRoutes(app: FastifyInstance) {
           }).then(() => {
             card.screenshotReady = true;
             screenshotDone++;
+            persistSession(session);
             write({ event: 'progress', data: { kind: 'screenshot', done: screenshotDone, total } });
           }),
         ]);
       });
 
       session.status = 'ready';
+      persistSession(session, { immediate: true });
       write({ event: 'done', data: { sessionId: sid } });
     } catch (err) {
       session.status = 'error';
       session.errorMessage = err instanceof Error ? err.message : String(err);
+      persistSession(session, { immediate: true });
       write({ event: 'error', data: { message: session.errorMessage } });
     } finally {
       reply.raw.end();

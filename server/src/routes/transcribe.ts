@@ -2,6 +2,7 @@ import path from 'node:path';
 import type { FastifyInstance } from 'fastify';
 import { requireSession, sessionDir } from '../lib/session.js';
 import { transcribe } from '../lib/whisper.js';
+import { persistSession } from '../lib/persistence.js';
 
 type TranscribeBody = {
   openaiKey?: string;
@@ -47,6 +48,7 @@ export async function transcribeRoutes(app: FastifyInstance) {
         screenshotReady: false,
         rev: 0,
       }));
+      persistSession(session, { immediate: true });
       write('done', { cueCount: cues.length });
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
