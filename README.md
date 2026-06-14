@@ -39,6 +39,7 @@ Keyboard shortcuts in the review view:
 | `S`       | Skip current card   |
 | `←` / `→` | Previous / next card |
 | `Space`   | Replay audio        |
+| `M`       | Merge with previous card |
 
 ## Layout
 
