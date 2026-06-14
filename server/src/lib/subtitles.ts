@@ -1,0 +1,47 @@
+import fs from 'node:fs/promises';
+import path from 'node:path';
+import { parse as parseSubs } from 'subsrt-ts';
+
+export type SubtitleCue = {
+  index: number;
+  startMs: number;
+  endMs: number;
+  text: string;
+};
+
+const ASS_OVERRIDE_RE = /\{[^}]*\}/g;
+const ASS_LINEBREAK_RE = /\\[Nnh]/g;
+const HTML_TAG_RE = /<[^>]+>/g;
+const WHITESPACE_RE = /\s+/g;
+
+function cleanText(raw: string): string {
+  return raw
+    .replace(ASS_OVERRIDE_RE, '')
+    .replace(ASS_LINEBREAK_RE, ' ')
+    .replace(HTML_TAG_RE, '')
+    .replace(WHITESPACE_RE, ' ')
+    .trim();
+}
+
+export async function parseSubtitleFile(filePath: string): Promise<SubtitleCue[]> {
+  const ext = path.extname(filePath).toLowerCase().replace(/^\./, '');
+  const raw = await fs.readFile(filePath, 'utf8');
+  const format = ext === 'ssa' ? 'ass' : ext;
+
+  const captions = parseSubs(raw, { format });
+
+  const cues: SubtitleCue[] = [];
+  let idx = 0;
+  for (const cap of captions) {
+    if (cap.type !== 'caption') continue;
+    const startMs = typeof cap.start === 'number' ? cap.start : 0;
+    const endMs = typeof cap.end === 'number' ? cap.end : 0;
+    if (endMs <= startMs) continue;
+
+    const text = cleanText(cap.text ?? '');
+    if (!text) continue;
+
+    cues.push({ index: idx++, startMs, endMs, text });
+  }
+  return cues;
+}

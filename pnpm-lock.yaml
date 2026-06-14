@@ -50,6 +50,9 @@ importers:
       fastify:
         specifier: ^5.1.0
         version: 5.8.5
+      subsrt-ts:
+        specifier: ^2.1.2
+        version: 2.1.2
     devDependencies:
       '@types/node':
         specifier: ^22.10.1
@@ -1044,6 +1047,10 @@ packages:
     resolution: {integrity: sha512-aulFJcD6YK8V1G7iRB5tigAP4TsHBZZrOV8pjV++zdUwmeV8uzbY7yn6h9MswN62adStNZFuCIx4haBnRuMDaw==}
     engines: {node: '>=18'}
 
+  subsrt-ts@2.1.2:
+    resolution: {integrity: sha512-45yNlK42Z0pz4lAaNYbR5P60M2jmHl+gfAaiJxDIXsXXqoE7TkDCzl/00HgWyZXKkdIU6s8FiNtRvrlOZb+5Qg==}
+    hasBin: true
+
   thread-stream@4.2.0:
     resolution: {integrity: sha512-e2zZ96wSChazBsbENf/Pcm/4swHt2cEKQ92rhUjkL9GCKiTDJIaTBenjE/m9DXi0QBmTMDkFDdOomUy20A1tDQ==}
     engines: {node: '>=20'}
@@ -2003,6 +2010,8 @@ snapshots:
   statuses@2.0.2: {}
 
   strip-final-newline@4.0.0: {}
+
+  subsrt-ts@2.1.2: {}
 
   thread-stream@4.2.0:
     dependencies:
