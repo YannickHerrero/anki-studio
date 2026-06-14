@@ -5,6 +5,7 @@ import multipart from '@fastify/multipart';
 import { config } from './config.js';
 import { uploadRoutes } from './routes/upload.js';
 import { processRoutes } from './routes/process.js';
+import { mediaRoutes } from './routes/media.js';
 
 async function main() {
   await fs.mkdir(config.tmpDir, { recursive: true });
@@ -19,6 +20,7 @@ async function main() {
   app.get('/health', async () => ({ ok: true }));
   await app.register(uploadRoutes);
   await app.register(processRoutes);
+  await app.register(mediaRoutes);
 
   await app.listen({ port: config.port, host: config.host });
 }
