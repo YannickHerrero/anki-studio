@@ -1,6 +1,27 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import { Agent } from 'undici';
 import type { SubtitleCue } from './subtitles.js';
+
+// Whisper transcription for a long audio can take several minutes; the
+// default undici timeouts (5 min) silently kill the socket, surfacing as a
+// useless "fetch failed". Allow up to 15 minutes for headers and body.
+const dispatcher = new Agent({
+  headersTimeout: 15 * 60 * 1000,
+  bodyTimeout: 15 * 60 * 1000,
+  connect: { timeout: 30 * 1000 },
+});
+
+function describeFetchError(err: unknown): string {
+  if (err instanceof Error) {
+    const cause = (err as { cause?: { code?: string; message?: string } }).cause;
+    if (cause?.code || cause?.message) {
+      return `${err.message} (${cause.code ?? ''}${cause.code && cause.message ? ': ' : ''}${cause.message ?? ''})`;
+    }
+    return err.message;
+  }
+  return String(err);
+}
 
 type WhisperSegment = {
   id: number;
@@ -47,11 +68,22 @@ export async function transcribe(opts: TranscribeOptions): Promise<SubtitleCue[]
   form.append('response_format', 'verbose_json');
   if (opts.language) form.append('language', opts.language);
 
-  const res = await fetch(WHISPER_URL, {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${opts.apiKey}` },
-    body: form,
-  });
+  let res: Response;
+  try {
+    res = await fetch(WHISPER_URL, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${opts.apiKey}` },
+      body: form,
+      // undici-specific: keeps the socket alive long enough for long Whisper jobs.
+      // Cast because the Node fetch types don't expose `dispatcher`.
+      ...({ dispatcher } as unknown as RequestInit),
+    });
+  } catch (err) {
+    throw new Error(
+      `Whisper request failed: ${describeFetchError(err)}. ` +
+        'The audio may be too long for a single call; try a shorter video.',
+    );
+  }
   if (!res.ok) {
     const text = await res.text().catch(() => '');
     throw new Error(`whisper ${res.status}: ${text.slice(0, 200)}`);
