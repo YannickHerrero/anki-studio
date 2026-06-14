@@ -48,7 +48,7 @@ export async function extractAudio(
   outPath: string,
   opts: AudioOptions,
 ): Promise<void> {
-  const prePad = opts.prePadMs ?? 250;
+  const prePad = opts.prePadMs ?? 500;
   const postPad = opts.postPadMs ?? 500;
   const start = Math.max(0, opts.startMs - prePad);
   const end = opts.endMs + postPad;
