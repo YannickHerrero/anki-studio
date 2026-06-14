@@ -9,6 +9,7 @@ import { RouterView, RouterLink } from 'vue-router';
       <RouterLink to="/">Home</RouterLink>
       <RouterLink to="/upload">Upload</RouterLink>
       <RouterLink to="/youtube">YouTube</RouterLink>
+      <RouterLink to="/sessions">Sessions</RouterLink>
       <RouterLink to="/settings">Settings</RouterLink>
     </nav>
   </header>

@@ -28,6 +28,15 @@ import { RouterLink } from 'vue-router';
           sentence with whole-transcript context.
         </p>
       </RouterLink>
+
+      <RouterLink :to="{ name: 'sessions' }" class="home__card home__card--wide">
+        <div class="home__card__head">
+          <span class="rule__bar"></span>
+          <span class="rule__label">Resume</span>
+        </div>
+        <h2>Open an existing session</h2>
+        <p>Pick up where you left off. All your uploads and YouTube imports are kept on disk.</p>
+      </RouterLink>
     </div>
   </section>
 </template>
@@ -51,6 +60,9 @@ h1 {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 18px;
+}
+.home__card--wide {
+  grid-column: span 2;
 }
 .home__card {
   background: var(--bBg);
