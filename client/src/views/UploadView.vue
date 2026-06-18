@@ -52,7 +52,7 @@ function onDrop(e: DragEvent) {
 }
 
 async function submit() {
-  if (!video.value || !subtitle.value) return;
+  if (!canSubmit.value || !video.value) return;
   busy.value = true;
   error.value = null;
   try {
