@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { loadKnown, saveKnown, summarize, type KnownEntry, type WordStatus } from '../lib/knownWords.js';
 import { buildKnownFromAnki } from '../lib/knownSync.js';
 import { deckNames } from '../lib/ankiconnect.js';
+import { loadHistory, recordSnapshot } from '../lib/knownHistory.js';
 
 type SyncBody = {
   decks?: string[];
@@ -37,6 +38,10 @@ export async function knownRoutes(app: FastifyInstance) {
   app.get('/known', async () => {
     const store = await loadKnown();
     return summarize(store);
+  });
+
+  app.get('/known/history', async () => {
+    return { history: await loadHistory() };
   });
 
   // Full word list (word + status + reading), newest-matured first.
@@ -79,7 +84,14 @@ export async function knownRoutes(app: FastifyInstance) {
         url: body.url,
       });
       await saveKnown(store);
-      return summarize(store);
+      const sum = summarize(store);
+      await recordSnapshot({
+        known: sum.known,
+        learning: sum.learning,
+        created: sum.created,
+        total: sum.total,
+      });
+      return sum;
     } catch (err) {
       return reply.code(502).send({ error: err instanceof Error ? err.message : String(err) });
     }
@@ -98,7 +110,14 @@ export async function knownRoutes(app: FastifyInstance) {
     }
     const store = { updatedAt: Date.now(), source: 'import', words };
     await saveKnown(store);
-    return summarize(store);
+    const sum = summarize(store);
+    await recordSnapshot({
+      known: sum.known,
+      learning: sum.learning,
+      created: sum.created,
+      total: sum.total,
+    });
+    return sum;
   });
 
   app.delete('/known', async () => {
