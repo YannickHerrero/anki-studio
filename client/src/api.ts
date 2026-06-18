@@ -167,6 +167,22 @@ export async function streamChat(
 }
 
 export type WordStatus = 'known' | 'learning' | 'created';
+export type TokenStatus = WordStatus | 'new';
+
+export type CardAnalysis = {
+  newCount: number;
+  learningCount: number;
+  knownCount: number;
+  createdCount: number;
+  tokens: Array<{ t: string; s?: TokenStatus }>;
+};
+
+export async function fetchAnalysis(sid: string): Promise<Record<number, CardAnalysis>> {
+  const res = await fetch(`${BASE}/session/${sid}/analysis`);
+  if (!res.ok) throw new Error(`fetchAnalysis: ${res.status}`);
+  const data = await res.json();
+  return data.words as Record<number, CardAnalysis>;
+}
 
 export type KnownSummary = {
   total: number;
