@@ -72,6 +72,27 @@ export async function saveDecisions(
   });
 }
 
+export type CardEdit = {
+  text?: string;
+  translation?: string;
+  note?: string;
+};
+
+export async function updateCard(
+  sid: string,
+  index: number,
+  edit: CardEdit,
+): Promise<{ index: number; text: string; translation?: string; note?: string }> {
+  const res = await fetch(`${BASE}/session/${sid}/card/${index}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(edit),
+  });
+  if (!res.ok) throw new Error(`updateCard failed: ${res.status} ${await res.text()}`);
+  const data = await res.json();
+  return data.card;
+}
+
 export function mediaUrl(path: string): string {
   return `${BASE}${path}`;
 }
