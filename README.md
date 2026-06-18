@@ -1,23 +1,25 @@
 # Anki Studio
 
-A small, personal web utility that turns Japanese video content into a deck of Anki sentence cards, subs2srs-style.
+A small, personal web utility that mines Japanese video content into **vocab flashcards** — one card per target word, with the source sentence's audio and screenshot as context.
 
 Two sources are supported:
 
-- **Upload** — drop a video file (mkv / mp4 / …) and a matching subtitle file (`.srt`, `.ass`, `.ssa` or `.vtt`) you already have.
+- **Upload** — drop a video file (mkv / mp4 / …) and an optional subtitle file (`.srt`, `.ass`, `.ssa` or `.vtt`). Without a subtitle the tool transcribes with Whisper.
 - **YouTube** — paste a YouTube URL. The tool downloads a 480p copy, transcribes the audio with OpenAI Whisper, and translates every sentence into English using the whole transcript as context for accuracy.
 
-Both paths land you in the **Review** step (keep / skip each card; audio autoplays, screenshot shown). For YouTube cards the English translation is shown next to the Japanese line during review.
+Both paths land you in the **Review** step. For each subtitle line the sentence is tokenized and shown with every word as a clickable token; audio autoplays and a mid-line screenshot is shown. Click any words you want to learn, hit **Add N card(s) to pile** (or `A`), and they're queued for export. A pile sidebar (toggle with `P`) lists everything you've picked so far. Selecting nothing skips the cue. There's no keep/skip — anything you don't pick from a cue is dropped.
 
-During review you can open a **Chat** panel to discuss the current line with an LLM — ask about grammar, or ask it to fix the translation, edit the Japanese, or add furigana to a proper noun. Every change comes back as a diff you explicitly **Apply** or **Reject**, and only ever touches the current line. The chat is ephemeral and resets when you move to another card. Each card also has a freeform **Note** field you can edit by hand (or via the chat) that is carried into the Anki card.
+During review you can open a **Chat** panel to discuss the current line with an LLM — ask about grammar, fix the translation, edit the Japanese text, or add furigana to a proper noun. Every change comes back as a diff you explicitly **Apply** or **Reject**, and only ever touches the current line.
 
-Hit **Export** to bundle the kept cards as a single `.apkg`. Each card gets vocabulary and grammar notes generated via [OpenRouter](https://openrouter.ai). For YouTube cards the preprocessing translation is reused — what you reviewed is what lands in Anki.
+Hit **Done — Export** to bundle the picks into a single `.apkg`. Each pick becomes one Anki note: front shows the target kanji + screenshot + autoplay audio; back adds the full sentence with furigana and the target word highlighted, the sentence translation, a per-word details panel (context-aware definition + reading + pitch + frequency + part-of-speech + usage notes), grammar, and your freeform note. Definitions are generated at build time via [OpenRouter](https://openrouter.ai) so they match how the word is used in that sentence.
 
-Sessions are kept on disk so you can resume any of them later without regenerating. Once you're done with a session you can **Free space** to delete just the (large) source video — the cards, audio clips, screenshots, translations and notes all stay. Retiming and merging re-cut from the video, so if you want them again the tool prompts you to **re-link** the video: pick the file again (uploads) or re-download it (YouTube). A duration check warns you if the re-linked file doesn't match the original.
+The same word picked from two different sentences becomes two separate Anki notes (different example sentences) — great for seeing usage in multiple contexts. The same word picked from the same sentence is deduped silently.
 
-The **Known words** page pulls your vocabulary status from Anki via [AnkiConnect](https://foosoft.net/projects/anki-connect/): pick the deck(s) and the field holding the sentence. Each card's sentence is tokenized with [kuromoji](https://github.com/takuyaa/kuromoji.js) and every word inherits that card's review interval — over your threshold (default 10 days) is **known**, shorter is **learning**, never-reviewed is **created** — so maturing a sentence marks all its words known. (Vocabulary decks work too, since a one-word field just tokenizes to one word, and you can paste a plain word list instead.) During review, content words are highlighted by status, each card shows how many **new** words it has, and **Skip known** drops every card that teaches you nothing new — so you can focus mining on the i+1 sentences.
+Sessions are kept on disk so you can resume any of them later without regenerating. Once you're done with a session you can **Free space** to delete just the (large) source video — the cues, audio clips, screenshots, translations and pile all stay. Retiming and merging re-cut from the video, so if you want them again the tool prompts you to **re-link** the video: pick the file again (uploads) or re-download it (YouTube). A duration check warns you if the re-linked file doesn't match the original.
 
-The card template comes from [`design/japanese-sentence-card.html`](./design/japanese-sentence-card.html) — open that file in any browser to see how the cards look on AnkiMobile and desktop, in light and dark mode.
+The **Known words** page pulls your vocabulary status from Anki via [AnkiConnect](https://foosoft.net/projects/anki-connect/): pick the deck(s) and the field holding the sentence. Each card's sentence is tokenized with [kuromoji](https://github.com/takuyaa/kuromoji.js) and every word inherits that card's review interval — over your threshold (default 10 days) is **known**, shorter is **learning**, never-reviewed is **created** — so maturing a sentence marks all its words known. During review, content words are underlined by status, each cue shows how many **new** words it has, and **Skip to next cue with new words** jumps past cues whose every word is already known.
+
+The card template lives in [`server/src/anki/`](./server/src/anki/). Imports use a stable note-type id, so a second import updates the existing **Japanese Vocab Card** note type in place instead of creating `+`/`++` duplicates.
 
 ## Requirements
 
@@ -47,13 +49,24 @@ Open the Vite URL, drop into **Settings** to paste your OpenRouter key (and an O
 
 Keyboard shortcuts in the review view:
 
-| Key       | Action              |
-|-----------|---------------------|
-| `K`       | Keep current card   |
-| `S`       | Skip current card   |
-| `←` / `→` | Previous / next card |
-| `Space`   | Replay audio        |
-| `M`       | Merge with previous card |
+| Key       | Action                       |
+|-----------|------------------------------|
+| `A`       | Add selected words to the pile and advance to next cue |
+| `P`       | Toggle the pile sidebar      |
+| `←` / `→` | Previous / next cue          |
+| `Space`   | Replay audio                 |
+| `M`       | Merge with previous cue      |
+
+Click any word in the sentence to select it; click again to deselect. Non-content
+tokens (particles, punctuation) render in muted text and aren't clickable.
+
+## A note on schema upgrades
+
+When the on-disk session format changes incompatibly, the server bumps a
+`schemaVersion` sentinel and **wipes pre-bumped sessions on the next boot** —
+this is intentional for a personal tool. The Anki note type, `Japanese Vocab
+Card`, is unrelated and pinned to a stable id, so re-importing always reuses
+the same note type in Anki.
 
 ## Layout
 
