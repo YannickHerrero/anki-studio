@@ -1,13 +1,13 @@
 import { findCards, cardsInfo, type AnkiCardInfo } from './ankiconnect.js';
+import { tokenize } from './tokenizer.js';
+import { stripFurigana } from './furigana.js';
 import type { KnownStore, KnownEntry, WordStatus } from './knownWords.js';
 
 export type SyncOptions = {
-  /** Deck names to treat as the vocabulary source (one word per card). */
+  /** Deck names to pull from — sentence or vocabulary cards both work. */
   decks: string[];
-  /** Note field holding the dictionary-form word. */
+  /** Note field holding the sentence (or word). Its text is tokenized. */
   field: string;
-  /** Optional field holding the reading, for disambiguation. */
-  readingField?: string;
   /** Interval (days) at/above which a reviewed card counts as "known". */
   knownThresholdDays?: number;
   url?: string;
@@ -36,24 +36,26 @@ export async function buildKnownFromAnki(opts: SyncOptions): Promise<KnownStore>
     const ids = await findCards(`deck:"${deck.replace(/"/g, '\\"')}"`, opts.url);
     const infos = await cardsInfo(ids, opts.url);
     for (const card of infos) {
-      const word = stripHtml(card.fields[opts.field]?.value ?? '');
-      if (!word) continue;
+      const text = stripFurigana(stripHtml(card.fields[opts.field]?.value ?? ''));
+      if (!text) continue;
       const status = classify(card, threshold);
-      const reading = opts.readingField
-        ? stripHtml(card.fields[opts.readingField]?.value ?? '')
-        : '';
-      const existing = words[word];
-      // A word can sit on several cards (recognition + production…). The most
-      // mature card wins; keep the longest interval we've seen for it.
-      if (!existing || RANK[status] > RANK[existing.status]) {
-        words[word] = {
-          status,
-          intervalDays: card.interval,
-          reading: reading || existing?.reading,
-        };
-      } else {
-        if (card.interval > (existing.intervalDays ?? 0)) existing.intervalDays = card.interval;
-        if (reading && !existing.reading) existing.reading = reading;
+      // Every content word in a sentence card inherits that card's status, so a
+      // sentence you've matured marks all its words known.
+      const tokens = await tokenize(text);
+      for (const tok of tokens) {
+        if (!tok.content) continue;
+        const existing = words[tok.lemma];
+        // A word appears in many sentences; the most mature card wins.
+        if (!existing || RANK[status] > RANK[existing.status]) {
+          words[tok.lemma] = {
+            status,
+            intervalDays: card.interval,
+            reading: tok.reading || existing?.reading,
+          };
+        } else {
+          if (card.interval > (existing.intervalDays ?? 0)) existing.intervalDays = card.interval;
+          if (tok.reading && !existing.reading) existing.reading = tok.reading;
+        }
       }
     }
   }

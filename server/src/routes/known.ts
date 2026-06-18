@@ -6,7 +6,6 @@ import { deckNames } from '../lib/ankiconnect.js';
 type SyncBody = {
   decks?: string[];
   field?: string;
-  readingField?: string;
   knownThresholdDays?: number;
   url?: string;
 };
@@ -62,7 +61,6 @@ export async function knownRoutes(app: FastifyInstance) {
       const store = await buildKnownFromAnki({
         decks: body.decks,
         field: body.field,
-        readingField: body.readingField,
         knownThresholdDays: body.knownThresholdDays,
         url: body.url,
       });
