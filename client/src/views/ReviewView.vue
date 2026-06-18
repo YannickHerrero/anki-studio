@@ -412,8 +412,22 @@ onMounted(async () => {
     session.cards = data.cards;
     source.value = data.source;
     videoRemoved.value = data.videoRemoved;
+    // Wait for picks so we can resume on the cue right after the last one
+    // anything was added from. Analysis can keep loading in the background.
     void loadAnalysis();
-    void refreshPicks();
+    await refreshPicks();
+
+    // Smart-resume: focus the first cue whose stable index is greater than
+    // the highest-indexed picked cue. If everything's been picked from or
+    // there are no picks, leave the cursor at the start.
+    if (session.picks.length > 0 && session.cards.length > 0) {
+      const lastPickedCueIndex = session.picks.reduce(
+        (max, p) => Math.max(max, p.cueIndex),
+        -1,
+      );
+      const nextPos = session.cards.findIndex((c) => c.index > lastPickedCueIndex);
+      if (nextPos >= 0) index.value = nextPos;
+    }
   } catch (err) {
     error.value = err instanceof Error ? err.message : String(err);
   } finally {
