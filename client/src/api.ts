@@ -195,8 +195,24 @@ export async function streamChat(
   );
 }
 
-export type WordStatus = 'known' | 'learning' | 'created';
+export type WordStatus = 'known' | 'learning' | 'created' | 'ignored';
 export type TokenStatus = WordStatus | 'new';
+/** Statuses settable from the review-view hotkeys (1/0). */
+export type ManualWordStatus = 'known' | 'ignored';
+
+export async function markWord(
+  lemma: string,
+  status: ManualWordStatus | null,
+  reading?: string,
+): Promise<{ ok: boolean; lemma: string; status: WordStatus | null }> {
+  const res = await fetch(`${BASE}/known/mark`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ lemma, status, reading }),
+  });
+  if (!res.ok) throw new Error(`markWord failed: ${res.status} ${await res.text()}`);
+  return res.json();
+}
 
 export type CardAnalysis = {
   newCount: number;

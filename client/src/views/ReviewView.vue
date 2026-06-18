@@ -6,6 +6,7 @@ import {
   fetchAnalysis,
   fetchCards,
   fetchPicks,
+  markWord,
   mediaUrl,
   mergeWithPrevious,
   relinkVideo,
@@ -16,6 +17,7 @@ import {
   type CardAnalysis,
   type CardSummary,
   type EditProposal,
+  type ManualWordStatus,
   type PickTokenInput,
 } from '../api';
 import { useSessionStore } from '../stores/session';
@@ -56,6 +58,9 @@ const relinkMismatch = ref(false);
 const fileInput = ref<HTMLInputElement | null>(null);
 
 const current = computed<CardSummary | undefined>(() => session.cards[index.value]);
+
+// Token currently under the mouse — used for the 1/0 manual-mark hotkeys.
+const hoveredTokenIdx = ref<number | null>(null);
 
 // Selection: per-cue map of token-index → true. Cleared on cue change.
 const selectedTokensByCue = ref<Record<number, Set<number>>>({});
@@ -205,6 +210,62 @@ function onKey(e: KeyboardEvent) {
     replay();
   } else if (e.key === 'm' || e.key === 'M') void mergePrev();
   else if (e.key === 'p' || e.key === 'P') showPile.value = !showPile.value;
+  else if (e.key === '1') void markHovered('known');
+  else if (e.key === '0') void markHovered('ignored');
+}
+
+/**
+ * Apply a manual status (known / ignored) to whichever token is hovered.
+ * Updates every cue's analysis locally so a word marked from cue 5 also
+ * reflects in cue 12. Then persists via /known/mark.
+ */
+async function markHovered(status: ManualWordStatus) {
+  const cue = current.value;
+  const tokenIdx = hoveredTokenIdx.value;
+  const a = currentAnalysis.value;
+  if (!cue || tokenIdx === null || !a) return;
+  const tok = a.tokens[tokenIdx];
+  if (!tok?.lemma) return;
+  const lemma = tok.lemma;
+
+  // Optimistic: walk every cue's analysis and apply the new status to all
+  // tokens sharing this lemma, recomputing the count fields.
+  applyStatusLocally(lemma, status);
+
+  try {
+    await markWord(lemma, status, tok.reading);
+  } catch (err) {
+    // Best-effort recovery — refetch the truth.
+    error.value = err instanceof Error ? err.message : String(err);
+    void loadAnalysis();
+  }
+}
+
+function applyStatusLocally(lemma: string, status: ManualWordStatus) {
+  const next: Record<number, CardAnalysis> = {};
+  for (const [k, row] of Object.entries(analysis.value)) {
+    const tokens = row.tokens.map((t) => (t.lemma === lemma ? { ...t, s: status } : t));
+    // Recount unique lemmas by status. 'ignored' contributes to nothing.
+    const seen = {
+      new: new Set<string>(),
+      known: new Set<string>(),
+      learning: new Set<string>(),
+      created: new Set<string>(),
+      ignored: new Set<string>(),
+    };
+    for (const t of tokens) {
+      if (!t.lemma || !t.s) continue;
+      seen[t.s].add(t.lemma);
+    }
+    next[Number(k)] = {
+      newCount: seen.new.size,
+      learningCount: seen.learning.size,
+      knownCount: seen.known.size,
+      createdCount: seen.created.size,
+      tokens,
+    };
+  }
+  analysis.value = next;
 }
 
 async function mergePrev() {
@@ -531,8 +592,11 @@ const picksForCurrentCue = computed(() =>
               tok.s && settings.underlineByStatus ? `tok--${tok.s}` : '',
               currentSelection.has(i) ? 'tok--picked' : '',
               tok.lemma ? 'tok--clickable' : 'tok--literal',
+              hoveredTokenIdx === i ? 'tok--hovered' : '',
             ]"
             @click="tok.lemma ? toggleToken(i) : null"
+            @mouseenter="tok.lemma ? (hoveredTokenIdx = i) : null"
+            @mouseleave="hoveredTokenIdx === i ? (hoveredTokenIdx = null) : null"
           >{{ tok.t }}</span>
         </p>
         <p class="sentence sentence--plain" v-else>{{ current.text }}</p>
@@ -553,6 +617,9 @@ const picksForCurrentCue = computed(() =>
             Already added from this cue:
             <span class="from-here" v-for="p in picksForCurrentCue" :key="p.id">{{ p.lemma }}</span>
           </span>
+        </div>
+        <div class="hover-hint muted small">
+          Hover a word and press <kbd>1</kbd> to mark it known · <kbd>0</kbd> to ignore it
         </div>
 
         <audio
@@ -778,6 +845,19 @@ button.ghost {
   color: var(--accent);
   font-family: 'Zen Kaku Gothic New', sans-serif;
 }
+.hover-hint {
+  margin-top: -4px;
+  color: var(--pageMuted);
+}
+.hover-hint kbd {
+  font-family: ui-monospace, monospace;
+  font-size: 11px;
+  background: var(--bPanel);
+  border: 1px solid var(--pageLine);
+  border-radius: 3px;
+  padding: 1px 5px;
+  margin: 0 2px;
+}
 .card {
   background: var(--bBg);
   border: 1px solid var(--bLine);
@@ -898,6 +978,15 @@ audio {
 }
 .tok--new {
   border-bottom-color: var(--accent);
+}
+.tok--ignored {
+  /* explicitly no underline — manual "skip" mark */
+  border-bottom-color: transparent;
+  color: var(--bMuted);
+}
+.tok--hovered {
+  background: var(--bPanel);
+  outline: 1px dashed var(--pageLine);
 }
 .pile-list {
   list-style: none;
