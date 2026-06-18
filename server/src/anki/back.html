@@ -2,34 +2,44 @@
 
 <div class="js-card js-card--answer">
   <div class="js-card__inner">
-    {{#Translation}}
+    {{#Sentence}}
     <div class="js-section">
       <div class="js-panel">
         <div class="js-rule">
-          <span class="js-rule__bar"></span>
-          <span class="js-rule__label">Meaning</span>
+          <span class="js-rule__bar"></span><span class="js-rule__label">Context</span>
         </div>
-        <div class="js-translation">{{Translation}}</div>
+        <div class="js-sentence">{{furigana:Sentence}}</div>
       </div>
     </div>
-    {{/Translation}}
+    {{/Sentence}}
 
-    {{#Vocabulary}}
+    {{#SentenceTranslation}}
     <div class="js-section">
-      <div class="js-rule">
-        <span class="js-rule__bar"></span>
-        <span class="js-rule__label">Vocabulary</span>
+      <div class="js-panel">
+        <div class="js-rule">
+          <span class="js-rule__bar"></span><span class="js-rule__label">Meaning</span>
+        </div>
+        <div class="js-translation">{{SentenceTranslation}}</div>
       </div>
-      <div class="js-vocabulary">{{Vocabulary}}</div>
     </div>
-    {{/Vocabulary}}
+    {{/SentenceTranslation}}
+
+    {{#WordDetails}}
+    <div class="js-section">
+      <div class="js-panel">
+        <div class="js-rule">
+          <span class="js-rule__bar"></span><span class="js-rule__label">Word</span>
+        </div>
+        <div class="js-word-details">{{WordDetails}}</div>
+      </div>
+    </div>
+    {{/WordDetails}}
 
     {{#Grammar}}
     <div class="js-section">
       <div class="js-panel">
         <div class="js-rule">
-          <span class="js-rule__bar"></span>
-          <span class="js-rule__label">Grammar</span>
+          <span class="js-rule__bar"></span><span class="js-rule__label">Grammar</span>
         </div>
         <div class="js-grammar">{{Grammar}}</div>
       </div>
@@ -40,8 +50,7 @@
     <div class="js-section">
       <div class="js-panel">
         <div class="js-rule">
-          <span class="js-rule__bar"></span>
-          <span class="js-rule__label">Notes</span>
+          <span class="js-rule__bar"></span><span class="js-rule__label">Notes</span>
         </div>
         <div class="js-notes">{{Notes}}</div>
       </div>

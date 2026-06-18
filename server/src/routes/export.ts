@@ -93,22 +93,8 @@ export async function exportRoutes(app: FastifyInstance) {
       const outName = `${safeDeck || 'deck'}.apkg`;
       const outPath = path.join(sessionDir(sid), outName);
 
-      const notes: ApkgNote[] = kept.map((card) => {
-        const e = enrichments.get(card.index)!;
-        const audioFile = `as_${sid.slice(0, 8)}_${card.index}.mp3`;
-        const shotFile = `as_${sid.slice(0, 8)}_${card.index}.jpg`;
-        return {
-          expression: card.text,
-          translation: e.translation,
-          vocabulary: vocabularyToHtml(e.vocabulary),
-          grammar: grammarToHtml(e.grammar),
-          note: card.note ?? '',
-          audioFilename: audioFile,
-          audioPath: audioPath(sid, card.index),
-          screenshotFilename: shotFile,
-          screenshotPath: screenshotPath(sid, card.index),
-        };
-      });
+      // task 54 will populate notes from picks.
+      const notes: ApkgNote[] = [];
 
       write('build', { stage: 'package' });
       await buildApkg({

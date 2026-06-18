@@ -6,11 +6,20 @@ import Database from 'better-sqlite3';
 import { ZipArchive } from 'archiver';
 
 export type ApkgNote = {
-  expression: string;
-  translation: string;
-  vocabulary: string;
+  /** Big kanji target on the front. */
+  targetWord: string;
+  /** Full Japanese sentence with kanji[furigana] markup for Anki's furigana filter. */
+  sentence: string;
+  /** English translation of the sentence. */
+  sentenceTranslation: string;
+  /** Rendered HTML for the Word Details panel. */
+  wordDetails: string;
+  /** Sentence-level grammar notes HTML. */
   grammar: string;
-  note?: string;
+  /** Freeform user notes. */
+  noteText?: string;
+  /** Stable guid seed — keeps the same Anki note across re-exports. */
+  guidSeed: string;
   audioFilename?: string;
   audioPath?: string;
   screenshotFilename?: string;
@@ -102,11 +111,12 @@ CREATE INDEX ix_notes_csum on notes (csum);
 `;
 
 const FIELDS = [
-  'Expression',
+  'TargetWord',
+  'Sentence',
+  'SentenceTranslation',
   'Audio',
   'Screenshot',
-  'Translation',
-  'Vocabulary',
+  'WordDetails',
   'Grammar',
   'Notes',
 ] as const;
@@ -139,6 +149,7 @@ function fieldChecksum(value: string): number {
 // once and must not change for the "Japanese Sentence Card" model.
 const STABLE_MODEL_IDS: Record<string, number> = {
   'Japanese Sentence Card': 1735689600001,
+  'Japanese Vocab Card': 1750000000001,
 };
 
 function stableModelId(name: string): number {
@@ -156,7 +167,7 @@ function stableModelId(name: string): number {
 function buildModel(modelId: number, deckId: number, opts: BuildApkgOptions) {
   return {
     id: modelId,
-    name: opts.modelName ?? 'Japanese Sentence Card',
+    name: opts.modelName ?? 'Japanese Vocab Card',
     type: 0,
     mod: Math.floor(Date.now() / 1000),
     usn: -1,
@@ -164,7 +175,7 @@ function buildModel(modelId: number, deckId: number, opts: BuildApkgOptions) {
     did: deckId,
     tmpls: [
       {
-        name: 'Sentence',
+        name: 'Vocab',
         ord: 0,
         qfmt: opts.frontTemplate,
         afmt: opts.backTemplate,
@@ -261,7 +272,7 @@ export async function buildApkg(opts: BuildApkgOptions): Promise<void> {
 
   const nowS = Math.floor(Date.now() / 1000);
   const nowMs = Date.now();
-  const modelName = opts.modelName ?? 'Japanese Sentence Card';
+  const modelName = opts.modelName ?? 'Japanese Vocab Card';
   const modelId = stableModelId(modelName);
   // Decks are still per-export — each .apkg gives a separate deck in Anki.
   const deckId = nowMs;
@@ -303,7 +314,7 @@ export async function buildApkg(opts: BuildApkgOptions): Promise<void> {
     const note = opts.notes[i]!;
     const noteId = nowMs + 100 + i * 2;
     const cardId = noteId + 1;
-    const guid = makeGuid(`${opts.deckName}:${i}:${note.expression}`);
+    const guid = makeGuid(note.guidSeed);
 
     registerMedia(note.audioPath, note.audioFilename);
     registerMedia(note.screenshotPath, note.screenshotFilename);
@@ -314,17 +325,26 @@ export async function buildApkg(opts: BuildApkgOptions): Promise<void> {
       : '';
 
     const fields = [
-      note.expression,
+      note.targetWord,
+      note.sentence,
+      note.sentenceTranslation,
       audioField,
       screenshotField,
-      note.translation,
-      note.vocabulary,
+      note.wordDetails,
       note.grammar,
-      note.note ?? '',
+      note.noteText ?? '',
     ];
     const flds = fields.join('\x1f');
 
-    insertNote.run(noteId, guid, modelId, nowS, flds, note.expression, fieldChecksum(note.expression));
+    insertNote.run(
+      noteId,
+      guid,
+      modelId,
+      nowS,
+      flds,
+      note.targetWord,
+      fieldChecksum(note.targetWord),
+    );
     insertCard.run(cardId, noteId, deckId, nowS, i);
   }
 
