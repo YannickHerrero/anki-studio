@@ -5,7 +5,7 @@ import type { FastifyInstance } from 'fastify';
 import { createSession, sessionDir } from '../lib/session.js';
 import { parseSubtitleFile } from '../lib/subtitles.js';
 import { persistSession } from '../lib/persistence.js';
-import { pickJapaneseTrack, probeAudioStreams } from '../lib/ffmpeg.js';
+import { pickJapaneseTrack, probeAudioStreams, probeDurationMs } from '../lib/ffmpeg.js';
 
 const SUBTITLE_EXTS = new Set(['srt', 'ass', 'ssa', 'vtt']);
 
@@ -59,6 +59,18 @@ export async function uploadRoutes(app: FastifyInstance) {
       }));
     }
     session.title = session.videoOriginalName;
+
+    // Capture a fingerprint so a later re-link can verify it's the same file.
+    try {
+      const [stat, durationMs] = await Promise.all([
+        fs.promises.stat(session.videoPath),
+        probeDurationMs(session.videoPath),
+      ]);
+      session.videoSize = stat.size;
+      session.videoDurationMs = durationMs;
+    } catch {
+      // non-fatal — re-link will just skip the same-file check
+    }
 
     // Probe audio tracks. If we can auto-pick Japanese, do so silently;
     // otherwise leave audioTrackIndex unset and let the client prompt.
