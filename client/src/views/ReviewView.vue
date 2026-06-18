@@ -12,6 +12,8 @@ import {
   type Decision,
 } from '../api';
 import { useSessionStore } from '../stores/session';
+import ChatPanel from '../components/ChatPanel.vue';
+import type { EditProposal } from '../api';
 
 const props = defineProps<{ sid: string }>();
 const router = useRouter();
@@ -29,6 +31,7 @@ const retimeDone = ref(0);
 const retimeTotal = ref(0);
 const retimeError = ref<string | null>(null);
 
+const showChat = ref(false);
 const merging = ref(false);
 const mergeError = ref<string | null>(null);
 const canMerge = computed(() => index.value > 0 && !!current.value && !merging.value);
@@ -194,13 +197,27 @@ onUnmounted(() => {
   if (noteTimer) clearTimeout(noteTimer);
 });
 
+async function applyEdit(edit: EditProposal) {
+  const card = current.value;
+  if (!card) return;
+  try {
+    const updated = await updateCard(props.sid, card.index, edit);
+    card.text = updated.text;
+    card.translation = updated.translation;
+    card.note = updated.note;
+    noteDraft.value = updated.note ?? '';
+  } catch (err) {
+    error.value = err instanceof Error ? err.message : String(err);
+  }
+}
+
 function goExport() {
   router.push({ name: 'export', params: { sid: props.sid } });
 }
 </script>
 
 <template>
-  <section class="review">
+  <section class="review" :class="{ 'review--wide': showChat }">
     <header class="review__header">
       <div class="counts">
         <span class="counts__item counts__item--kept">{{ session.keptCount }} keep</span>
@@ -213,6 +230,9 @@ function goExport() {
           {{ merging ? 'Merging…' : 'Merge with previous' }}
         </button>
         <button class="ghost" @click="showRetime = !showRetime">Retime</button>
+        <button class="ghost" :class="{ active: showChat }" @click="showChat = !showChat">
+          Chat
+        </button>
         <button class="ghost" @click="goExport">Done — Export</button>
       </div>
     </header>
@@ -253,6 +273,8 @@ function goExport() {
       <div v-if="retimeError" class="err">{{ retimeError }}</div>
     </div>
 
+    <div class="review__main" :class="{ 'review__main--chat': showChat }">
+    <div class="review__col">
     <p v-if="loading" class="muted">Loading…</p>
     <p v-else-if="error" class="err">{{ error }}</p>
     <p v-else-if="!current" class="muted">No cards.</p>
@@ -296,12 +318,40 @@ function goExport() {
         </div>
       </div>
     </article>
+    </div>
+    <div v-if="showChat && current" class="review__chat">
+      <ChatPanel :sid="sid" :card="current" @apply="applyEdit" />
+    </div>
+    </div>
   </section>
 </template>
 
 <style scoped>
 .review {
   max-width: 720px;
+}
+.review--wide {
+  max-width: 1140px;
+}
+.review__main {
+  display: flex;
+  gap: 18px;
+  align-items: flex-start;
+}
+.review__col {
+  flex: 1;
+  min-width: 0;
+}
+.review__chat {
+  width: 380px;
+  flex-shrink: 0;
+  height: min(72vh, 680px);
+  position: sticky;
+  top: 16px;
+}
+button.ghost.active {
+  border-color: var(--accent);
+  color: var(--accent);
 }
 .review__header {
   display: flex;
