@@ -12,6 +12,7 @@ import {
 } from '../lib/openrouter.js';
 import { mapWithConcurrency } from '../lib/pool.js';
 import { persistSession } from '../lib/persistence.js';
+import { stripFurigana } from '../lib/furigana.js';
 
 type ExportBody = {
   deckName?: string;
@@ -75,9 +76,10 @@ export async function exportRoutes(app: FastifyInstance) {
       let done = 0;
       const enrichments = new Map<number, Enrichment>();
       await mapWithConcurrency(kept, 5, async (card) => {
+        const sentence = stripFurigana(card.text);
         const input = card.translation
-          ? { sentence: card.text, existingTranslation: card.translation }
-          : { sentence: card.text };
+          ? { sentence, existingTranslation: card.translation }
+          : { sentence };
         const e = await enrichSentence(input, {
           apiKey: body.openrouterKey!,
           model: body.model!,
@@ -103,6 +105,7 @@ export async function exportRoutes(app: FastifyInstance) {
           translation: e.translation,
           vocabulary: vocabularyToHtml(e.vocabulary),
           grammar: grammarToHtml(e.grammar),
+          note: card.note ?? '',
           audioFilename: audioFile,
           audioPath: audioPath(sid, card.index),
           screenshotFilename: shotFile,
