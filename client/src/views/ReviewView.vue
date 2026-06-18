@@ -2,6 +2,7 @@
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import {
+  fetchAnalysis,
   fetchCards,
   mediaUrl,
   mergeWithPrevious,
@@ -10,6 +11,7 @@ import {
   saveDecisions,
   streamSse,
   updateCard,
+  type CardAnalysis,
   type CardSummary,
   type Decision,
   type EditProposal,
@@ -51,6 +53,40 @@ const current = computed<CardSummary | undefined>(() => session.cards[index.valu
 const currentDecision = computed<Decision | undefined>(() =>
   current.value ? session.decisions[current.value.index] : undefined,
 );
+
+const analysis = ref<Record<number, CardAnalysis>>({});
+const currentAnalysis = computed<CardAnalysis | undefined>(() =>
+  current.value ? analysis.value[current.value.index] : undefined,
+);
+// Only highlight once there's a known-words list to compare against.
+const hasKnownData = computed(() =>
+  Object.values(analysis.value).some(
+    (a) => a.knownCount + a.learningCount + a.createdCount > 0,
+  ),
+);
+
+async function loadAnalysis() {
+  try {
+    analysis.value = await fetchAnalysis(props.sid);
+  } catch {
+    // analysis is a nice-to-have; ignore if the tokenizer/known list isn't ready
+  }
+}
+
+function autoSkipKnown() {
+  let skipped = 0;
+  for (const card of session.cards) {
+    const a = analysis.value[card.index];
+    if (a && a.newCount === 0 && session.decisions[card.index] !== 'skip') {
+      session.decisions[card.index] = 'skip';
+      skipped++;
+    }
+  }
+  if (skipped > 0) {
+    scheduleSave();
+    next();
+  }
+}
 
 let saveTimer: ReturnType<typeof setTimeout> | null = null;
 function scheduleSave() {
@@ -198,6 +234,7 @@ onMounted(async () => {
     session.decisions = { ...data.decisions };
     source.value = data.source;
     videoRemoved.value = data.videoRemoved;
+    void loadAnalysis();
     // jump to first undecided
     const firstUndecided = data.cards.findIndex((c) => !data.decisions[c.index]);
     if (firstUndecided >= 0) index.value = firstUndecided;
@@ -298,6 +335,13 @@ function goExport() {
         <span class="counts__item counts__item--kept">{{ session.keptCount }} keep</span>
         <span class="counts__item counts__item--skipped">{{ session.skippedCount }} skip</span>
         <span class="counts__item">{{ session.remainingCount }} left</span>
+        <span
+          v-if="currentAnalysis && hasKnownData"
+          class="counts__item"
+          :class="currentAnalysis.newCount === 0 ? 'counts__item--allknown' : 'counts__item--new'"
+        >
+          {{ currentAnalysis.newCount === 0 ? 'all known' : `${currentAnalysis.newCount} new` }}
+        </span>
       </div>
       <div class="position">{{ index + 1 }} / {{ session.cards.length }}</div>
       <div class="header-actions">
@@ -308,6 +352,7 @@ function goExport() {
         <button class="ghost" :class="{ active: showChat }" @click="showChat = !showChat">
           Chat
         </button>
+        <button v-if="hasKnownData" class="ghost" @click="autoSkipKnown">Skip known</button>
         <button class="ghost" @click="goExport">Done — Export</button>
       </div>
     </header>
@@ -397,7 +442,17 @@ function goExport() {
         <div class="rule">
           <span class="rule__bar"></span><span class="rule__label">Sentence</span>
         </div>
-        <p class="sentence">{{ current.text }}</p>
+        <p class="sentence">
+          <template v-if="currentAnalysis && hasKnownData">
+            <span
+              v-for="(tok, i) in currentAnalysis.tokens"
+              :key="i"
+              :class="tok.s ? `tok tok--${tok.s}` : undefined"
+              >{{ tok.t }}</span
+            >
+          </template>
+          <template v-else>{{ current.text }}</template>
+        </p>
         <p v-if="current.translation" class="translation">{{ current.translation }}</p>
         <audio
           v-if="current.audioReady"
@@ -551,6 +606,13 @@ button.ghost.active {
 .counts__item--skipped {
   color: #c83a3a;
 }
+.counts__item--new {
+  color: #c8902a;
+  border-color: #c8902a;
+}
+.counts__item--allknown {
+  color: var(--pageMuted);
+}
 .position {
   font-family: ui-monospace, monospace;
   font-size: 13px;
@@ -619,6 +681,20 @@ button.ghost {
   line-height: 1.7;
   color: var(--bInk);
   margin: 0;
+}
+/* Known words fade back; words still being learned or never-seen stand out. */
+.tok--known {
+  color: var(--bMuted);
+}
+.tok--learning {
+  color: #c8902a;
+}
+.tok--created {
+  color: #3f7d5f;
+}
+.tok--new {
+  color: var(--bInk);
+  border-bottom: 2px solid #c8902a;
 }
 .translation {
   font-size: 15px;
