@@ -15,6 +15,8 @@ Hit **Export** to bundle the kept cards as a single `.apkg`. Each card gets voca
 
 Sessions are kept on disk so you can resume any of them later without regenerating. Once you're done with a session you can **Free space** to delete just the (large) source video — the cards, audio clips, screenshots, translations and notes all stay. Retiming and merging re-cut from the video, so if you want them again the tool prompts you to **re-link** the video: pick the file again (uploads) or re-download it (YouTube). A duration check warns you if the re-linked file doesn't match the original.
 
+The **Known words** page pulls your vocabulary status from Anki via [AnkiConnect](https://foosoft.net/projects/anki-connect/): pick the deck(s) and the field holding the word, and each card is classified by its review interval — over your threshold (default 10 days) is **known**, shorter is **learning**, never-reviewed is **created**. (You can also paste a plain word list instead.) During review, sentences are tokenized with [kuromoji](https://github.com/takuyaa/kuromoji.js) and content words are highlighted by status, each card shows how many **new** words it has, and **Skip known** drops every card that teaches you nothing new — so you can focus mining on the i+1 sentences.
+
 The card template comes from [`design/japanese-sentence-card.html`](./design/japanese-sentence-card.html) — open that file in any browser to see how the cards look on AnkiMobile and desktop, in light and dark mode.
 
 ## Requirements
@@ -25,6 +27,7 @@ The card template comes from [`design/japanese-sentence-card.html`](./design/jap
 - `yt-dlp` on `PATH` — only needed for the YouTube flow (`brew install yt-dlp`)
 - An [OpenRouter](https://openrouter.ai) API key — for translation / vocabulary / grammar enrichment
 - An [OpenAI](https://platform.openai.com) API key — for the YouTube flow (Whisper transcription). Skip if you only use Upload.
+- Anki running with the [AnkiConnect](https://foosoft.net/projects/anki-connect/) add-on — only needed to sync known words. Skip if you don't use the Known words feature (or import a list instead).
 
 Both keys are pasted into the Settings page on first run and stored only in your browser's `localStorage`.
 
