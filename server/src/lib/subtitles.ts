@@ -9,6 +9,8 @@ export type SubtitleCue = {
   endMs: number;
   text: string;
   translation?: string;
+  /** Freeform learner note, shown on the card back and editable in review. */
+  note?: string;
 };
 
 const HTML_TAG_RE = /<[^>]+>/g;
