@@ -33,9 +33,13 @@ function getTokenizer(): Promise<kuromoji.Tokenizer<kuromoji.IpadicFeatures>> {
 
 // Parts-of-speech that count as 'content' words worth surfacing in the review
 // UI and matching against known-words. 連体詞 catches interrogatives and
-// demonstratives (どういう, この, その, あらゆる, …) — common enough to be worth
-// being clickable; the user can mark uninteresting ones as ignored with `0`.
-const CONTENT_POS = new Set(['名詞', '動詞', '形容詞', '副詞', '連体詞']);
+// demonstratives (どういう, この, その, あらゆる); 感動詞 catches greetings/
+// interjections (こんにちは, ありがとう, おはよう).
+const CONTENT_POS = new Set(['名詞', '動詞', '形容詞', '副詞', '連体詞', '感動詞']);
+// Auxiliary verbs (助動詞) are mostly grammar suffixes (ます, た, ない, …) but
+// a small set of copulas IS vocab worth learning. Only these specific lemmas
+// are surfaced as content when they end up standing alone after the merger.
+const COPULA_LEMMAS = new Set(['です', 'だ', 'だろう', 'でしょう', 'らしい', 'ようだ', 'みたいだ']);
 // 非自立 (non-independent) nouns like ふう / こと / ところ ARE meaningful content
 // for a learner — keep them. 代名詞 (彼 / 私 / 君) too. Bare numbers (数) stay
 // excluded because they aren't useful vocab; numbers fused with their counter
@@ -117,8 +121,9 @@ export async function tokenize(text: string): Promise<Token[]> {
   const raw = mergeAuxiliaries(tk.tokenize(text));
   return raw.map((t) => {
     const lemma = t.basic_form && t.basic_form !== '*' ? t.basic_form : t.surface_form;
+    const isCopulaAux = t.pos === '助動詞' && COPULA_LEMMAS.has(lemma);
     const content =
-      CONTENT_POS.has(t.pos) &&
+      (CONTENT_POS.has(t.pos) || isCopulaAux) &&
       !EXCLUDE_DETAIL.has(t.pos_detail_1) &&
       HAS_JAPANESE.test(t.surface_form);
     const reading = t.reading && t.reading !== '*' ? kataToHira(t.reading) : '';
