@@ -44,18 +44,20 @@ export async function uploadRoutes(app: FastifyInstance) {
       }
     }
 
-    if (!gotVideo || !gotSubs) {
-      return reply.code(400).send({ error: 'both "video" and "subtitle" files are required' });
+    if (!gotVideo) {
+      return reply.code(400).send({ error: '"video" file is required' });
     }
 
-    const cues = await parseSubtitleFile(session.subtitlePath);
-    session.cues = cues;
-    session.cards = cues.map((c) => ({
-      ...c,
-      audioReady: false,
-      screenshotReady: false,
-      rev: 0,
-    }));
+    if (gotSubs) {
+      const cues = await parseSubtitleFile(session.subtitlePath);
+      session.cues = cues;
+      session.cards = cues.map((c) => ({
+        ...c,
+        audioReady: false,
+        screenshotReady: false,
+        rev: 0,
+      }));
+    }
     session.title = session.videoOriginalName;
 
     // Probe audio tracks. If we can auto-pick Japanese, do so silently;
@@ -73,7 +75,8 @@ export async function uploadRoutes(app: FastifyInstance) {
 
     return {
       sessionId: session.id,
-      cueCount: cues.length,
+      cueCount: session.cards.length,
+      needsTranscription: !gotSubs,
       audioStreams: session.audioStreams ?? [],
       audioTrackIndex: session.audioTrackIndex ?? null,
     };
