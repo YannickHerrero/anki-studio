@@ -2,6 +2,7 @@ export type CardSummary = {
   index: number;
   text: string;
   translation?: string;
+  note?: string;
   startMs: number;
   endMs: number;
   audioUrl: string;
