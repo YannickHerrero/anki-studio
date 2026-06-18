@@ -31,8 +31,16 @@ function getTokenizer(): Promise<kuromoji.Tokenizer<kuromoji.IpadicFeatures>> {
   return tokenizerPromise;
 }
 
-const CONTENT_POS = new Set(['名詞', '動詞', '形容詞', '副詞']);
-const EXCLUDE_DETAIL = new Set(['非自立', '代名詞', '数', '接尾']);
+// Parts-of-speech that count as 'content' words worth surfacing in the review
+// UI and matching against known-words. 連体詞 catches interrogatives and
+// demonstratives (どういう, この, その, あらゆる, …) — common enough to be worth
+// being clickable; the user can mark uninteresting ones as ignored with `0`.
+const CONTENT_POS = new Set(['名詞', '動詞', '形容詞', '副詞', '連体詞']);
+// 非自立 (non-independent) nouns like ふう / こと / ところ ARE meaningful content
+// for a learner — keep them. 代名詞 (彼 / 私 / 君) too. Bare numbers (数) stay
+// excluded because they aren't useful vocab; numbers fused with their counter
+// suffix (4月, 3時) are re-included via the merger below.
+const EXCLUDE_DETAIL = new Set(['数']);
 const HAS_JAPANESE = /[぀-ヿ一-鿿]/;
 
 // IPADIC POS tags for tokens that attach to a preceding verb/adjective stem.
@@ -45,11 +53,21 @@ function shouldMergeIntoPrev(
   prev: kuromoji.IpadicFeatures,
   next: kuromoji.IpadicFeatures,
 ): boolean {
-  if (prev.pos !== '動詞' && prev.pos !== '形容詞') return false;
-  if (MERGE_INTO_PREV_POS.has(next.pos)) return true;
+  if (prev.pos === '動詞' || prev.pos === '形容詞') {
+    if (MERGE_INTO_PREV_POS.has(next.pos)) return true;
+    if (
+      (next.pos === '動詞' || next.pos === '形容詞') &&
+      MERGE_INTO_PREV_DETAIL.has(next.pos_detail_1)
+    ) {
+      return true;
+    }
+  }
+  // Counters: 4 + 月 / 3 + 時 / 5 + 人 — re-glue into one noun.
   if (
-    (next.pos === '動詞' || next.pos === '形容詞') &&
-    MERGE_INTO_PREV_DETAIL.has(next.pos_detail_1)
+    prev.pos === '名詞' &&
+    prev.pos_detail_1 === '数' &&
+    next.pos === '名詞' &&
+    next.pos_detail_1 === '接尾'
   ) {
     return true;
   }
@@ -68,9 +86,16 @@ function mergeAuxiliaries(tokens: kuromoji.IpadicFeatures[]): kuromoji.IpadicFea
   for (const t of tokens) {
     const prev = out[out.length - 1];
     if (prev && shouldMergeIntoPrev(prev, t)) {
+      const surface = prev.surface_form + t.surface_form;
+      const numberCounter =
+        prev.pos === '名詞' && prev.pos_detail_1 === '数' && t.pos_detail_1 === '接尾';
       out[out.length - 1] = {
         ...prev,
-        surface_form: prev.surface_form + t.surface_form,
+        surface_form: surface,
+        // Counters: the merged form is the dictionary form (4月 IS the lemma),
+        // and we promote pos_detail_1 to '一般' so the content filter accepts it.
+        pos_detail_1: numberCounter ? '一般' : prev.pos_detail_1,
+        basic_form: numberCounter ? surface : prev.basic_form,
         reading: joinFeature(
           prev.reading && prev.reading !== '*' ? prev.reading : '',
           t.reading,
@@ -79,8 +104,6 @@ function mergeAuxiliaries(tokens: kuromoji.IpadicFeatures[]): kuromoji.IpadicFea
           prev.pronunciation && prev.pronunciation !== '*' ? prev.pronunciation : '',
           t.pronunciation,
         ) || '*',
-        // Keep prev's basic_form / pos so the lemma is the dictionary form
-        // of the head verb/adjective (`食べる`, `大きい`, etc.).
       };
     } else {
       out.push(t);
