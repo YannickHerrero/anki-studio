@@ -13,6 +13,8 @@ During review you can open a **Chat** panel to discuss the current line with an 
 
 Hit **Export** to bundle the kept cards as a single `.apkg`. Each card gets vocabulary and grammar notes generated via [OpenRouter](https://openrouter.ai). For YouTube cards the preprocessing translation is reused — what you reviewed is what lands in Anki.
 
+Sessions are kept on disk so you can resume any of them later without regenerating. Once you're done with a session you can **Free space** to delete just the (large) source video — the cards, audio clips, screenshots, translations and notes all stay. Retiming and merging re-cut from the video, so if you want them again the tool prompts you to **re-link** the video: pick the file again (uploads) or re-download it (YouTube). A duration check warns you if the re-linked file doesn't match the original.
+
 The card template comes from [`design/japanese-sentence-card.html`](./design/japanese-sentence-card.html) — open that file in any browser to see how the cards look on AnkiMobile and desktop, in light and dark mode.
 
 ## Requirements
