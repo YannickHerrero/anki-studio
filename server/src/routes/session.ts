@@ -76,6 +76,7 @@ export async function sessionRoutes(app: FastifyInstance) {
         index: c.index,
         text: c.text,
         translation: c.translation,
+        note: c.note,
         startMs: c.startMs,
         endMs: c.endMs,
         audioUrl: `/session/${sid}/media/audio/${c.index}?r=${c.rev}`,
