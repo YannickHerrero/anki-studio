@@ -6,6 +6,11 @@ import type { FastifyInstance } from 'fastify';
 import { requireSession, sessionDir, type Session } from '../lib/session.js';
 import { persistSession } from '../lib/persistence.js';
 import { probeDurationMs } from '../lib/ffmpeg.js';
+import { downloadVideo, validateYtDlp } from '../lib/ytdlp.js';
+
+function sseLine(event: string, data: unknown): string {
+  return `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
+}
 
 // A re-linked file is only useful if it lines up with the timing we cut against.
 // Duration is the robust cross-source check (a YouTube re-download legitimately
@@ -53,5 +58,56 @@ export async function relinkRoutes(app: FastifyInstance) {
       expectedDurationMs: session.videoDurationMs ?? null,
       actualDurationMs: durationMs,
     };
+  });
+
+  // YouTube-source re-link: re-download from the saved URL — no file picking.
+  app.post('/session/:sid/relink-youtube', async (req, reply) => {
+    const { sid } = req.params as { sid: string };
+    const session = requireSession(sid);
+
+    if (!session.youtubeUrl) {
+      return reply.code(400).send({ error: 'session has no YouTube URL to re-download' });
+    }
+    try {
+      await validateYtDlp();
+    } catch (err) {
+      return reply.code(500).send({ error: err instanceof Error ? err.message : String(err) });
+    }
+
+    reply.raw.writeHead(200, {
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache, no-transform',
+      Connection: 'keep-alive',
+      'X-Accel-Buffering': 'no',
+    });
+    const write = (event: string, data: unknown) => reply.raw.write(sseLine(event, data));
+
+    try {
+      write('start', { url: session.youtubeUrl });
+      const { videoPath } = await downloadVideo({
+        url: session.youtubeUrl,
+        outDir: sessionDir(sid),
+        onProgress: (pct) => write('download', { pct }),
+      });
+
+      const [stat, durationMs] = await Promise.all([
+        fsp.stat(videoPath),
+        probeDurationMs(videoPath),
+      ]);
+      session.videoPath = videoPath;
+      session.videoSize = stat.size;
+      session.videoRemoved = false;
+      persistSession(session, { immediate: true });
+
+      write('done', {
+        mismatch: durationMismatch(session, durationMs),
+        expectedDurationMs: session.videoDurationMs ?? null,
+        actualDurationMs: durationMs,
+      });
+    } catch (err) {
+      write('error', { message: err instanceof Error ? err.message : String(err) });
+    } finally {
+      reply.raw.end();
+    }
   });
 }
