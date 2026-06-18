@@ -10,6 +10,7 @@ export type ApkgNote = {
   translation: string;
   vocabulary: string;
   grammar: string;
+  note?: string;
   audioFilename?: string;
   audioPath?: string;
   screenshotFilename?: string;
@@ -100,7 +101,15 @@ CREATE INDEX ix_revlog_cid on revlog (cid);
 CREATE INDEX ix_notes_csum on notes (csum);
 `;
 
-const FIELDS = ['Expression', 'Audio', 'Screenshot', 'Translation', 'Vocabulary', 'Grammar'] as const;
+const FIELDS = [
+  'Expression',
+  'Audio',
+  'Screenshot',
+  'Translation',
+  'Vocabulary',
+  'Grammar',
+  'Notes',
+] as const;
 
 const GUID_ALPHABET =
   '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz!#$%&()*+,-./:;<=>?@[]^_`{|}~';
@@ -289,6 +298,7 @@ export async function buildApkg(opts: BuildApkgOptions): Promise<void> {
       note.translation,
       note.vocabulary,
       note.grammar,
+      note.note ?? '',
     ];
     const flds = fields.join('\x1f');
 
