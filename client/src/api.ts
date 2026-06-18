@@ -110,6 +110,35 @@ export async function mergeWithPrevious(
   return res.json();
 }
 
+export type ChatMessage = { role: 'user' | 'assistant'; content: string };
+
+export type EditProposal = {
+  text?: string;
+  translation?: string;
+  note?: string;
+};
+
+export async function streamChat(
+  sid: string,
+  payload: {
+    index: number;
+    messages: ChatMessage[];
+    openrouterKey: string;
+    model: string;
+  },
+  onEvent: SseHandler,
+): Promise<void> {
+  await streamSse(
+    `/session/${sid}/chat`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    },
+    onEvent,
+  );
+}
+
 export type SseHandler = (event: { event: string; data: unknown }) => void;
 
 export async function streamSse(
