@@ -39,6 +39,20 @@ export async function knownRoutes(app: FastifyInstance) {
     return summarize(store);
   });
 
+  // Full word list (word + status + reading), newest-matured first.
+  app.get('/known/words', async () => {
+    const store = await loadKnown();
+    const words = Object.entries(store.words)
+      .map(([word, entry]) => ({
+        word,
+        status: entry.status,
+        reading: entry.reading ?? '',
+        intervalDays: entry.intervalDays ?? 0,
+      }))
+      .sort((a, b) => b.intervalDays - a.intervalDays);
+    return { words };
+  });
+
   // Deck names so the client can let the user pick the vocabulary source.
   app.get('/known/decks', async (req, reply) => {
     const { url } = req.query as { url?: string };
