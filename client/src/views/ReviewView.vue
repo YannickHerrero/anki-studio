@@ -17,11 +17,13 @@ import {
   type EditProposal,
 } from '../api';
 import { useSessionStore } from '../stores/session';
+import { useSettingsStore } from '../stores/settings';
 import ChatPanel from '../components/ChatPanel.vue';
 
 const props = defineProps<{ sid: string }>();
 const router = useRouter();
 const session = useSessionStore();
+const settings = useSettingsStore();
 
 const index = ref(0);
 const loading = ref(true);
@@ -353,6 +355,14 @@ function goExport() {
           Chat
         </button>
         <button v-if="hasKnownData" class="ghost" @click="autoSkipKnown">Skip known</button>
+        <button
+          v-if="hasKnownData"
+          class="ghost"
+          :class="{ active: settings.underlineByStatus }"
+          @click="settings.underlineByStatus = !settings.underlineByStatus"
+        >
+          Underline
+        </button>
         <button class="ghost" @click="goExport">Done — Export</button>
       </div>
     </header>
@@ -443,7 +453,7 @@ function goExport() {
           <span class="rule__bar"></span><span class="rule__label">Sentence</span>
         </div>
         <p class="sentence">
-          <template v-if="currentAnalysis && hasKnownData">
+          <template v-if="currentAnalysis && hasKnownData && settings.underlineByStatus">
             <span
               v-for="(tok, i) in currentAnalysis.tokens"
               :key="i"
@@ -682,19 +692,23 @@ button.ghost {
   color: var(--bInk);
   margin: 0;
 }
-/* Known words fade back; words still being learned or never-seen stand out. */
+/* Underline content words by status; known words are left unmarked. */
+.tok {
+  text-decoration-line: underline;
+  text-decoration-thickness: 2px;
+  text-underline-offset: 4px;
+}
 .tok--known {
-  color: var(--bMuted);
+  text-decoration-line: none;
 }
 .tok--learning {
-  color: #c8902a;
+  text-decoration-color: #e0922a;
 }
 .tok--created {
-  color: #3f7d5f;
+  text-decoration-color: #9aa0a6;
 }
 .tok--new {
-  color: var(--bInk);
-  border-bottom: 2px solid #c8902a;
+  text-decoration-color: #d64545;
 }
 .translation {
   font-size: 15px;
