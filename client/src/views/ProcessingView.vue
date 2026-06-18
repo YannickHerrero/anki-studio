@@ -9,7 +9,15 @@ const router = useRouter();
 const route = useRoute();
 const settings = useSettingsStore();
 
-type Phase = 'idle' | 'transcribe' | 'refine' | 'align' | 'cut' | 'translate' | 'done';
+type Phase =
+  | 'idle'
+  | 'transcribe'
+  | 'refine'
+  | 'align'
+  | 'cut'
+  | 'translate'
+  | 'tokenize'
+  | 'done';
 const phase = ref<Phase>('idle');
 const alignStats = ref<{ aligned: number; skipped: number } | null>(null);
 const alignStage = ref<'extracting' | 'transcribing' | 'matching' | ''>('');
@@ -20,6 +28,8 @@ const audioDone = ref(0);
 const screenshotDone = ref(0);
 const error = ref<string | null>(null);
 const audioExtractStage = ref<'extracting' | 'done' | ''>('');
+const tokenizeDone = ref(0);
+const tokenizeTotal = ref(0);
 
 const cutPct = computed(() => {
   if (!total.value) return 0;
@@ -29,15 +39,19 @@ const cutPct = computed(() => {
 const overallPct = computed(() => {
   switch (phase.value) {
     case 'transcribe':
-      return 25;
+      return 20;
     case 'refine':
-      return 40;
+      return 30;
     case 'align':
-      return 35;
+      return 30;
     case 'cut':
-      return 50 + Math.round(cutPct.value * 0.4);
+      return 40 + Math.round(cutPct.value * 0.35);
     case 'translate':
-      return 92;
+      return 80;
+    case 'tokenize':
+      return tokenizeTotal.value
+        ? 85 + Math.round((tokenizeDone.value / tokenizeTotal.value) * 14)
+        : 90;
     case 'done':
       return 100;
     default:
@@ -68,6 +82,10 @@ const phaseLabel = computed(() => {
       return `Cutting clips — audio ${audioDone.value}/${total.value}, screenshots ${screenshotDone.value}/${total.value}`;
     case 'translate':
       return 'Translating subtitles in whole-transcript context…';
+    case 'tokenize':
+      return tokenizeTotal.value
+        ? `Refining word boundaries with LLM — ${tokenizeDone.value}/${tokenizeTotal.value}…`
+        : 'Refining word boundaries with LLM…';
     case 'done':
       return 'Done.';
     default:
@@ -207,6 +225,39 @@ onMounted(async () => {
       } catch (err) {
         // eslint-disable-next-line no-console
         console.warn('translation failed, continuing to review without it:', err);
+      }
+
+      // 3. LLM-refine tokenization so 食べました / ありがとうございます /
+      // 4月 / etc. arrive in the review as single tokens with correct
+      // lemmas. Best-effort: cues that fail fall back to kuromoji.
+      phase.value = 'tokenize';
+      try {
+        await streamSse(
+          `/session/${props.sid}/refineTokens`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              openrouterKey: settings.openrouterKey.trim(),
+              model: settings.model,
+            }),
+          },
+          ({ event, data }) => {
+            const d = data as {
+              total?: number;
+              done?: number;
+              message?: string;
+            };
+            if (event === 'start') tokenizeTotal.value = d.total ?? 0;
+            else if (event === 'progress') {
+              tokenizeDone.value = d.done ?? 0;
+              if (typeof d.total === 'number') tokenizeTotal.value = d.total;
+            } else if (event === 'error') throw new Error(d.message ?? 'tokenize failed');
+          },
+        );
+      } catch (err) {
+        // eslint-disable-next-line no-console
+        console.warn('token refinement failed, keeping kuromoji tokens:', err);
       }
     }
 

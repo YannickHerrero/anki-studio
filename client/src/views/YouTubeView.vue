@@ -20,6 +20,7 @@ type Phase =
   | 'refine'
   | 'translate'
   | 'process'
+  | 'tokenize'
   | 'done';
 const phase = ref<Phase>('idle');
 
@@ -29,6 +30,8 @@ const audioStage = ref<'extracting' | 'done' | ''>('');
 const videoTitle = ref('');
 const processedDone = ref(0);
 const processedTotal = ref(0);
+const tokenizeDone = ref(0);
+const tokenizeTotal = ref(0);
 
 const URL_RE = /^https?:\/\/(www\.|m\.|music\.)?(youtube\.com\/(watch\?[^#]*\bv=[\w-]{11}|shorts\/[\w-]{11})|youtu\.be\/[\w-]{11})/;
 const looksLikeYoutube = computed(() => URL_RE.test(url.value.trim()));
@@ -152,6 +155,34 @@ async function go() {
       },
     );
 
+    // 6. LLM-refine word boundaries (食べました, ありがとうございます, 4月 …).
+    // Best-effort: failures fall back to kuromoji per-cue.
+    phase.value = 'tokenize';
+    try {
+      await streamSse(
+        `/session/${sid}/refineTokens`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            openrouterKey: settings.openrouterKey.trim(),
+            model: settings.model,
+          }),
+        },
+        ({ event, data }) => {
+          const d = data as { total?: number; done?: number; message?: string };
+          if (event === 'start') tokenizeTotal.value = d.total ?? 0;
+          else if (event === 'progress') {
+            tokenizeDone.value = d.done ?? 0;
+            if (typeof d.total === 'number') tokenizeTotal.value = d.total;
+          } else if (event === 'error') throw new Error(d.message ?? 'tokenize failed');
+        },
+      );
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.warn('token refinement failed, keeping kuromoji tokens:', err);
+    }
+
     phase.value = 'done';
     router.replace({ name: 'review', params: { sid } });
   } catch (err) {
@@ -173,6 +204,10 @@ const phaseLabel = computed(() => {
       return 'Translating whole transcript…';
     case 'process':
       return `Cutting clips ${processedDone.value} / ${processedTotal.value}`;
+    case 'tokenize':
+      return tokenizeTotal.value
+        ? `Refining word boundaries — ${tokenizeDone.value}/${tokenizeTotal.value}…`
+        : 'Refining word boundaries with LLM…';
     case 'done':
       return 'Done.';
     default:
@@ -181,20 +216,23 @@ const phaseLabel = computed(() => {
 });
 
 const overallPct = computed(() => {
-  // Rough 4-phase progress for the bar.
   switch (phase.value) {
     case 'download':
-      return Math.round(downloadPct.value * 0.4);
+      return Math.round(downloadPct.value * 0.35);
     case 'transcribe':
-      return 45;
+      return 40;
     case 'refine':
-      return 55;
+      return 50;
     case 'translate':
-      return 65;
+      return 60;
     case 'process':
       return processedTotal.value
-        ? 65 + Math.round((processedDone.value / processedTotal.value) * 35)
-        : 65;
+        ? 60 + Math.round((processedDone.value / processedTotal.value) * 30)
+        : 60;
+    case 'tokenize':
+      return tokenizeTotal.value
+        ? 90 + Math.round((tokenizeDone.value / tokenizeTotal.value) * 9)
+        : 95;
     case 'done':
       return 100;
     default:
