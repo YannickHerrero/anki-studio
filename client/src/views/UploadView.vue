@@ -13,6 +13,7 @@ const video = ref<File | null>(null);
 const subtitle = ref<File | null>(null);
 const busy = ref(false);
 const error = ref<string | null>(null);
+const alignSubtitles = ref(false);
 
 const pendingSessionId = ref<string | null>(null);
 const audioStreams = ref<AudioStream[]>([]);
@@ -26,11 +27,15 @@ const subtitleExtOk = computed(() => {
 
 const willTranscribe = computed(() => !subtitle.value);
 
+const canAlign = computed(() => !!subtitle.value && !!settings.openaiKey.trim());
+
 const canSubmit = computed(() => {
   if (!video.value || !subtitleExtOk.value || !settings.isConfigured) return false;
   // Without a subtitle file we'll transcribe with Whisper, which requires the
   // OpenAI key from Settings.
   if (willTranscribe.value && !settings.openaiKey.trim()) return false;
+  // If the user asked to align, they need the OpenAI key.
+  if (alignSubtitles.value && !settings.openaiKey.trim()) return false;
   return true;
 });
 
@@ -68,7 +73,11 @@ async function submit() {
       return;
     }
 
-    router.push({ name: 'processing', params: { sid: result.sessionId } });
+    router.push({
+      name: 'processing',
+      params: { sid: result.sessionId },
+      query: alignSubtitles.value && subtitle.value ? { align: '1' } : undefined,
+    });
   } catch (err) {
     error.value = err instanceof Error ? err.message : String(err);
   } finally {
@@ -90,8 +99,9 @@ async function confirmTrack() {
   try {
     await setAudioTrack(pendingSessionId.value, chosenTrack.value);
     const sid = pendingSessionId.value;
+    const align = alignSubtitles.value && subtitle.value ? { align: '1' } : undefined;
     pendingSessionId.value = null;
-    router.push({ name: 'processing', params: { sid } });
+    router.push({ name: 'processing', params: { sid }, query: align });
   } catch (err) {
     error.value = err instanceof Error ? err.message : String(err);
   } finally {
@@ -153,6 +163,19 @@ function formatBytes(n: number): string {
           </div>
           <div v-else class="muted small">none — will transcribe with Whisper</div>
           <div v-if="!subtitleExtOk" class="err">Unsupported subtitle extension.</div>
+          <label v-if="subtitle" class="align-toggle">
+            <input
+              type="checkbox"
+              v-model="alignSubtitles"
+              :disabled="!settings.openaiKey.trim()"
+            />
+            <span>
+              Use Whisper to re-time these subtitles
+              <span v-if="!settings.openaiKey.trim()" class="muted small">
+                — needs an OpenAI key
+              </span>
+            </span>
+          </label>
         </div>
       </div>
     </div>
@@ -326,5 +349,17 @@ button:disabled {
 }
 .tracks__desc {
   flex: 1;
+}
+.align-toggle {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--pageInk);
+  margin-top: 4px;
+  cursor: pointer;
+}
+.align-toggle input {
+  margin-top: 2px;
 }
 </style>

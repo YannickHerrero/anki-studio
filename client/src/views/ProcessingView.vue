@@ -1,15 +1,19 @@
 <script setup lang="ts">
 import { ref, onMounted, computed } from 'vue';
-import { useRouter } from 'vue-router';
+import { useRouter, useRoute } from 'vue-router';
 import { streamSse } from '../api';
 import { useSettingsStore } from '../stores/settings';
 
 const props = defineProps<{ sid: string }>();
 const router = useRouter();
+const route = useRoute();
 const settings = useSettingsStore();
 
-type Phase = 'idle' | 'transcribe' | 'refine' | 'cut' | 'translate' | 'done';
+type Phase = 'idle' | 'transcribe' | 'refine' | 'align' | 'cut' | 'translate' | 'done';
 const phase = ref<Phase>('idle');
+const alignStats = ref<{ aligned: number; skipped: number } | null>(null);
+const alignStage = ref<'extracting' | 'transcribing' | 'matching' | ''>('');
+const shouldAlign = computed(() => route.query.align === '1');
 
 const total = ref(0);
 const audioDone = ref(0);
@@ -28,6 +32,8 @@ const overallPct = computed(() => {
       return 25;
     case 'refine':
       return 40;
+    case 'align':
+      return 35;
     case 'cut':
       return 50 + Math.round(cutPct.value * 0.4);
     case 'translate':
@@ -47,6 +53,17 @@ const phaseLabel = computed(() => {
         : 'Transcribing with Whisper…';
     case 'refine':
       return 'Refining sentence splits with LLM…';
+    case 'align':
+      switch (alignStage.value) {
+        case 'extracting':
+          return 'Extracting audio for Whisper…';
+        case 'transcribing':
+          return 'Transcribing with Whisper to align subtitles…';
+        case 'matching':
+          return 'Matching subtitle lines to Whisper words…';
+        default:
+          return 'Aligning subtitles to audio…';
+      }
     case 'cut':
       return `Cutting clips — audio ${audioDone.value}/${total.value}, screenshots ${screenshotDone.value}/${total.value}`;
     case 'translate':
@@ -109,10 +126,48 @@ async function ensureTranscript() {
   }
 }
 
+async function alignSubtitles() {
+  if (!shouldAlign.value) return;
+  if (!settings.openaiKey.trim()) {
+    throw new Error('alignment requested but no OpenAI key is configured');
+  }
+  phase.value = 'align';
+  try {
+    await streamSse(
+      `/session/${props.sid}/align`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ openaiKey: settings.openaiKey.trim() }),
+      },
+      ({ event, data }) => {
+        const d = data as {
+          stage?: string;
+          aligned?: number;
+          skipped?: number;
+          message?: string;
+        };
+        if (event === 'audio') alignStage.value = 'extracting';
+        else if (event === 'whisper') alignStage.value = 'transcribing';
+        else if (event === 'align') alignStage.value = 'matching';
+        else if (event === 'done') {
+          alignStats.value = { aligned: d.aligned ?? 0, skipped: d.skipped ?? 0 };
+        } else if (event === 'error') throw new Error(d.message ?? 'alignment failed');
+      },
+    );
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.warn('alignment failed, keeping original cue timings:', err);
+  }
+}
+
 onMounted(async () => {
   try {
-    // 0. If the session has no cues yet (no subtitle was uploaded), transcribe.
+    // 0a. If the session has no cues yet (no subtitle was uploaded), transcribe.
     await ensureTranscript();
+
+    // 0b. If the user asked to re-time existing subs, do that next.
+    await alignSubtitles();
 
     // 1. Cut per-cue audio + screenshots.
     phase.value = 'cut';
@@ -172,6 +227,10 @@ onMounted(async () => {
       <div class="bar__fill" :style="{ width: overallPct + '%' }"></div>
     </div>
     <div class="stage">{{ phaseLabel }}</div>
+    <p v-if="alignStats" class="hint">
+      Re-aligned {{ alignStats.aligned }} cues; {{ alignStats.skipped }} kept their original
+      timing (no confident Whisper match).
+    </p>
 
     <p v-if="error" class="err">{{ error }}</p>
   </section>
@@ -214,5 +273,10 @@ h1 {
   color: #c83a3a;
   font-size: 13px;
   margin-top: 16px;
+}
+.hint {
+  font-size: 12px;
+  color: var(--pageMuted);
+  margin-top: 10px;
 }
 </style>
