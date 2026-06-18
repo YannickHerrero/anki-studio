@@ -18,6 +18,7 @@ import { alignRoutes } from './routes/align.js';
 import { editCardRoutes } from './routes/editCard.js';
 import { chatRoutes } from './routes/chat.js';
 import { storageRoutes } from './routes/storage.js';
+import { relinkRoutes } from './routes/relink.js';
 import { rehydrateSessions } from './lib/persistence.js';
 
 async function main() {
@@ -49,6 +50,7 @@ async function main() {
   await app.register(editCardRoutes);
   await app.register(chatRoutes);
   await app.register(storageRoutes);
+  await app.register(relinkRoutes);
 
   await app.listen({ port: config.port, host: config.host });
 }
