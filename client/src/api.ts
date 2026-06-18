@@ -166,6 +166,65 @@ export async function streamChat(
   );
 }
 
+export type WordStatus = 'known' | 'learning' | 'created';
+
+export type KnownSummary = {
+  total: number;
+  known: number;
+  learning: number;
+  created: number;
+  updatedAt: number;
+  source?: string;
+};
+
+export async function fetchKnownSummary(): Promise<KnownSummary> {
+  const res = await fetch(`${BASE}/known`);
+  if (!res.ok) throw new Error(`fetchKnownSummary: ${res.status}`);
+  return res.json();
+}
+
+export async function fetchAnkiDecks(url?: string): Promise<string[]> {
+  const q = url ? `?url=${encodeURIComponent(url)}` : '';
+  const res = await fetch(`${BASE}/known/decks${q}`);
+  if (!res.ok) throw new Error(`fetchAnkiDecks failed: ${res.status} ${await res.text()}`);
+  const data = await res.json();
+  return data.decks as string[];
+}
+
+export type SyncKnownPayload = {
+  decks: string[];
+  field: string;
+  readingField?: string;
+  knownThresholdDays?: number;
+  url?: string;
+};
+
+export async function syncKnown(payload: SyncKnownPayload): Promise<KnownSummary> {
+  const res = await fetch(`${BASE}/known/sync`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) throw new Error(`syncKnown failed: ${res.status} ${await res.text()}`);
+  return res.json();
+}
+
+export async function importKnown(text: string): Promise<KnownSummary> {
+  const res = await fetch(`${BASE}/known/import`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ text }),
+  });
+  if (!res.ok) throw new Error(`importKnown failed: ${res.status} ${await res.text()}`);
+  return res.json();
+}
+
+export async function clearKnown(): Promise<KnownSummary> {
+  const res = await fetch(`${BASE}/known`, { method: 'DELETE' });
+  if (!res.ok) throw new Error(`clearKnown failed: ${res.status}`);
+  return res.json();
+}
+
 export type SseHandler = (event: { event: string; data: unknown }) => void;
 
 export async function streamSse(
