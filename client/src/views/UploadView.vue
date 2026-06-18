@@ -24,9 +24,15 @@ const subtitleExtOk = computed(() => {
   return /\.(srt|ass|ssa|vtt)$/i.test(subtitle.value.name);
 });
 
-const canSubmit = computed(
-  () => video.value && subtitle.value && subtitleExtOk.value && settings.isConfigured,
-);
+const willTranscribe = computed(() => !subtitle.value);
+
+const canSubmit = computed(() => {
+  if (!video.value || !subtitleExtOk.value || !settings.isConfigured) return false;
+  // Without a subtitle file we'll transcribe with Whisper, which requires the
+  // OpenAI key from Settings.
+  if (willTranscribe.value && !settings.openaiKey.trim()) return false;
+  return true;
+});
 
 function pickVideo(e: Event) {
   const f = (e.target as HTMLInputElement).files?.[0];
@@ -113,13 +119,23 @@ function formatBytes(n: number): string {
       <RouterLink to="/settings">Add one in Settings</RouterLink> before processing —
       enrichment runs during export.
     </p>
+    <p v-else-if="willTranscribe && !settings.openaiKey.trim()" class="warn">
+      No subtitle file given — Whisper will transcribe the audio, which needs an
+      <RouterLink to="/settings">OpenAI API key</RouterLink>.
+    </p>
+    <p v-else-if="willTranscribe" class="hint">
+      No subtitle file given — we'll transcribe with Whisper after upload.
+    </p>
 
     <div
       class="drop"
       @dragover.prevent
       @drop="onDrop"
     >
-      <p>Drop a video and a subtitle file here, or use the buttons below.</p>
+      <p>
+        Drop a video here, plus a subtitle file if you have one. Without subtitles we'll
+        transcribe with Whisper.
+      </p>
       <div class="drop__files">
         <div class="drop__file">
           <strong>Video</strong>
@@ -129,12 +145,13 @@ function formatBytes(n: number): string {
           </div>
         </div>
         <div class="drop__file">
-          <strong>Subtitle</strong>
+          <strong>Subtitle <span class="muted">(optional)</span></strong>
           <input type="file" accept=".srt,.ass,.ssa,.vtt" @change="pickSubtitle" />
           <div v-if="subtitle" class="meta">
             {{ subtitle.name }}
             <span class="muted">— {{ formatBytes(subtitle.size) }}</span>
           </div>
+          <div v-else class="muted small">none — will transcribe with Whisper</div>
           <div v-if="!subtitleExtOk" class="err">Unsupported subtitle extension.</div>
         </div>
       </div>
@@ -196,6 +213,14 @@ h1 {
 }
 .warn a {
   color: var(--accent);
+}
+.hint {
+  font-size: 12px;
+  color: var(--pageMuted);
+  margin: 0 0 18px;
+}
+.small {
+  font-size: 11px;
 }
 .drop {
   border: 1.5px dashed var(--pageLine);

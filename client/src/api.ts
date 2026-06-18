@@ -28,14 +28,15 @@ export type AudioStream = {
 export type UploadResult = {
   sessionId: string;
   cueCount: number;
+  needsTranscription: boolean;
   audioStreams: AudioStream[];
   audioTrackIndex: number | null;
 };
 
-export async function upload(video: File, subtitle: File): Promise<UploadResult> {
+export async function upload(video: File, subtitle: File | null): Promise<UploadResult> {
   const fd = new FormData();
   fd.append('video', video, video.name);
-  fd.append('subtitle', subtitle, subtitle.name);
+  if (subtitle) fd.append('subtitle', subtitle, subtitle.name);
   const res = await fetch(`${BASE}/upload`, { method: 'POST', body: fd });
   if (!res.ok) throw new Error(`upload failed: ${res.status} ${await res.text()}`);
   return res.json();

@@ -8,13 +8,14 @@ const props = defineProps<{ sid: string }>();
 const router = useRouter();
 const settings = useSettingsStore();
 
-type Phase = 'idle' | 'cut' | 'translate' | 'done';
+type Phase = 'idle' | 'transcribe' | 'refine' | 'cut' | 'translate' | 'done';
 const phase = ref<Phase>('idle');
 
 const total = ref(0);
 const audioDone = ref(0);
 const screenshotDone = ref(0);
 const error = ref<string | null>(null);
+const audioExtractStage = ref<'extracting' | 'done' | ''>('');
 
 const cutPct = computed(() => {
   if (!total.value) return 0;
@@ -23,10 +24,14 @@ const cutPct = computed(() => {
 
 const overallPct = computed(() => {
   switch (phase.value) {
+    case 'transcribe':
+      return 25;
+    case 'refine':
+      return 40;
     case 'cut':
-      return Math.round(cutPct.value * 0.85);
+      return 50 + Math.round(cutPct.value * 0.4);
     case 'translate':
-      return 90;
+      return 92;
     case 'done':
       return 100;
     default:
@@ -36,6 +41,12 @@ const overallPct = computed(() => {
 
 const phaseLabel = computed(() => {
   switch (phase.value) {
+    case 'transcribe':
+      return audioExtractStage.value === 'extracting'
+        ? 'Extracting audio for Whisper…'
+        : 'Transcribing with Whisper…';
+    case 'refine':
+      return 'Refining sentence splits with LLM…';
     case 'cut':
       return `Cutting clips — audio ${audioDone.value}/${total.value}, screenshots ${screenshotDone.value}/${total.value}`;
     case 'translate':
@@ -47,8 +58,62 @@ const phaseLabel = computed(() => {
   }
 });
 
+async function ensureTranscript() {
+  // Read session state to decide whether we need to transcribe.
+  const res = await fetch(`/api/session/${props.sid}`);
+  if (!res.ok) throw new Error(`session lookup failed: ${res.status}`);
+  const info = (await res.json()) as { cueCount: number };
+  if (info.cueCount > 0) return;
+
+  if (!settings.openaiKey.trim()) {
+    throw new Error('this session has no subtitles and no OpenAI key is configured');
+  }
+
+  // 1a. Transcribe with Whisper (extracts full audio first if missing).
+  phase.value = 'transcribe';
+  await streamSse(
+    `/session/${props.sid}/transcribe`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ openaiKey: settings.openaiKey.trim() }),
+    },
+    ({ event, data }) => {
+      const d = data as { stage?: string; message?: string };
+      if (event === 'audio') audioExtractStage.value = (d.stage as 'extracting' | 'done') ?? '';
+      else if (event === 'error') throw new Error(d.message ?? 'transcription failed');
+    },
+  );
+
+  // 1b. Refine sentence splits with LLM — best-effort.
+  phase.value = 'refine';
+  try {
+    await streamSse(
+      `/session/${props.sid}/refineSplits`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          openrouterKey: settings.openrouterKey.trim(),
+          model: settings.model,
+        }),
+      },
+      ({ event, data }) => {
+        const d = data as { message?: string };
+        if (event === 'error') throw new Error(d.message ?? 'refine failed');
+      },
+    );
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.warn('split refinement failed, keeping heuristic cues:', err);
+  }
+}
+
 onMounted(async () => {
   try {
+    // 0. If the session has no cues yet (no subtitle was uploaded), transcribe.
+    await ensureTranscript();
+
     // 1. Cut per-cue audio + screenshots.
     phase.value = 'cut';
     await streamSse(
