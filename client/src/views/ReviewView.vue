@@ -5,15 +5,17 @@ import {
   fetchCards,
   mediaUrl,
   mergeWithPrevious,
+  relinkVideo,
+  relinkYoutube,
   saveDecisions,
   streamSse,
   updateCard,
   type CardSummary,
   type Decision,
+  type EditProposal,
 } from '../api';
 import { useSessionStore } from '../stores/session';
 import ChatPanel from '../components/ChatPanel.vue';
-import type { EditProposal } from '../api';
 
 const props = defineProps<{ sid: string }>();
 const router = useRouter();
@@ -35,6 +37,15 @@ const showChat = ref(false);
 const merging = ref(false);
 const mergeError = ref<string | null>(null);
 const canMerge = computed(() => index.value > 0 && !!current.value && !merging.value);
+
+const source = ref<'upload' | 'youtube'>('upload');
+const videoRemoved = ref(false);
+const showRelink = ref(false);
+const relinking = ref(false);
+const relinkProgress = ref(0);
+const relinkError = ref<string | null>(null);
+const relinkMismatch = ref(false);
+const fileInput = ref<HTMLInputElement | null>(null);
 
 const current = computed<CardSummary | undefined>(() => session.cards[index.value]);
 const currentDecision = computed<Decision | undefined>(() =>
@@ -101,6 +112,10 @@ function onKey(e: KeyboardEvent) {
 
 async function mergePrev() {
   if (!canMerge.value || !current.value) return;
+  if (videoRemoved.value) {
+    promptRelink();
+    return;
+  }
   merging.value = true;
   mergeError.value = null;
   try {
@@ -181,6 +196,8 @@ onMounted(async () => {
     const data = await fetchCards(props.sid);
     session.cards = data.cards;
     session.decisions = { ...data.decisions };
+    source.value = data.source;
+    videoRemoved.value = data.videoRemoved;
     // jump to first undecided
     const firstUndecided = data.cards.findIndex((c) => !data.decisions[c.index]);
     if (firstUndecided >= 0) index.value = firstUndecided;
@@ -196,6 +213,64 @@ onUnmounted(() => {
   if (saveTimer) clearTimeout(saveTimer);
   if (noteTimer) clearTimeout(noteTimer);
 });
+
+function toggleRetime() {
+  if (videoRemoved.value) {
+    promptRelink();
+    return;
+  }
+  showRetime.value = !showRetime.value;
+}
+
+function promptRelink() {
+  showRetime.value = false;
+  relinkError.value = null;
+  relinkMismatch.value = false;
+  showRelink.value = true;
+}
+
+function chooseFile() {
+  fileInput.value?.click();
+}
+
+async function onFilePicked(e: Event) {
+  const file = (e.target as HTMLInputElement).files?.[0];
+  if (!file) return;
+  relinking.value = true;
+  relinkError.value = null;
+  try {
+    const res = await relinkVideo(props.sid, file);
+    videoRemoved.value = false;
+    relinkMismatch.value = res.mismatch;
+    if (!res.mismatch) showRelink.value = false;
+  } catch (err) {
+    relinkError.value = err instanceof Error ? err.message : String(err);
+  } finally {
+    relinking.value = false;
+    if (fileInput.value) fileInput.value.value = '';
+  }
+}
+
+async function relinkFromYoutube() {
+  relinking.value = true;
+  relinkError.value = null;
+  relinkProgress.value = 0;
+  try {
+    await relinkYoutube(props.sid, ({ event, data }) => {
+      const d = data as { pct?: number; mismatch?: boolean; message?: string };
+      if (event === 'download') relinkProgress.value = d.pct ?? 0;
+      else if (event === 'done') {
+        videoRemoved.value = false;
+        relinkMismatch.value = !!d.mismatch;
+      } else if (event === 'error') relinkError.value = d.message ?? 're-link failed';
+    });
+    if (!relinkError.value && !relinkMismatch.value) showRelink.value = false;
+  } catch (err) {
+    relinkError.value = err instanceof Error ? err.message : String(err);
+  } finally {
+    relinking.value = false;
+  }
+}
 
 async function applyEdit(edit: EditProposal) {
   const card = current.value;
@@ -229,7 +304,7 @@ function goExport() {
         <button class="ghost" :disabled="!canMerge" @click="mergePrev">
           {{ merging ? 'Merging…' : 'Merge with previous' }}
         </button>
-        <button class="ghost" @click="showRetime = !showRetime">Retime</button>
+        <button class="ghost" @click="toggleRetime">Retime</button>
         <button class="ghost" :class="{ active: showChat }" @click="showChat = !showChat">
           Chat
         </button>
@@ -237,6 +312,41 @@ function goExport() {
       </div>
     </header>
     <p v-if="mergeError" class="err">{{ mergeError }}</p>
+
+    <div v-if="showRelink" class="retime">
+      <input
+        ref="fileInput"
+        type="file"
+        accept="video/*,.mkv"
+        style="display: none"
+        @change="onFilePicked"
+      />
+      <div class="retime__row">
+        <span class="retime__label">Re-link</span>
+        <span class="retime__hint">
+          Retiming and merging re-cut from the source video, which was freed. Re-link it to continue.
+        </span>
+      </div>
+      <div class="retime__row">
+        <button
+          v-if="source === 'youtube'"
+          class="primary"
+          :disabled="relinking"
+          @click="relinkFromYoutube"
+        >
+          {{ relinking ? `Downloading ${relinkProgress}%…` : 'Re-download from YouTube' }}
+        </button>
+        <button v-else class="primary" :disabled="relinking" @click="chooseFile">
+          {{ relinking ? 'Linking…' : 'Choose video file…' }}
+        </button>
+        <button class="ghost" :disabled="relinking" @click="showRelink = false">Cancel</button>
+      </div>
+      <div v-if="relinkMismatch" class="retime__hint" style="color: #c83a3a">
+        Warning: this file's duration differs from the original — re-cuts may be misaligned.
+        It's been linked anyway; use only if you're sure it's the same video.
+      </div>
+      <div v-if="relinkError" class="err">{{ relinkError }}</div>
+    </div>
 
     <div v-if="showRetime" class="retime">
       <div class="retime__row">
