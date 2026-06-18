@@ -124,6 +124,26 @@ function fieldChecksum(value: string): number {
   return parseInt(hex, 16);
 }
 
+// Stable ID per model name. Anki keys note types by id on import — using
+// a fresh Date.now() each export made Anki create "Japanese Sentence Card+",
+// "++", … instead of reusing the existing one. The integer below was chosen
+// once and must not change for the "Japanese Sentence Card" model.
+const STABLE_MODEL_IDS: Record<string, number> = {
+  'Japanese Sentence Card': 1735689600001,
+};
+
+function stableModelId(name: string): number {
+  const known = STABLE_MODEL_IDS[name];
+  if (known !== undefined) return known;
+  // For any other model name, derive a deterministic id from the name so the
+  // same name always produces the same id across exports.
+  let h = 0;
+  for (let i = 0; i < name.length; i++) {
+    h = (h * 31 + name.charCodeAt(i)) >>> 0;
+  }
+  return 1_700_000_000_000 + h;
+}
+
 function buildModel(modelId: number, deckId: number, opts: BuildApkgOptions) {
   return {
     id: modelId,
@@ -232,8 +252,10 @@ export async function buildApkg(opts: BuildApkgOptions): Promise<void> {
 
   const nowS = Math.floor(Date.now() / 1000);
   const nowMs = Date.now();
-  const modelId = nowMs;
-  const deckId = nowMs + 1;
+  const modelName = opts.modelName ?? 'Japanese Sentence Card';
+  const modelId = stableModelId(modelName);
+  // Decks are still per-export — each .apkg gives a separate deck in Anki.
+  const deckId = nowMs;
 
   const model = buildModel(modelId, deckId, opts);
   const deck = buildDeck(deckId, opts.deckName);
