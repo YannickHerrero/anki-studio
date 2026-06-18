@@ -4,7 +4,15 @@ import { tokenize } from '../lib/tokenizer.js';
 import { loadKnown, type WordStatus } from '../lib/knownWords.js';
 import { stripFurigana } from '../lib/furigana.js';
 
-type TokenOut = { t: string; s?: WordStatus | 'new' };
+type TokenOut = {
+  t: string;
+  /** Status against the known list. Absent for non-content tokens (particles, punctuation). */
+  s?: WordStatus | 'new';
+  /** Dictionary form. Absent for non-content tokens. */
+  lemma?: string;
+  /** Hiragana reading of the lemma. Absent for non-content tokens. */
+  reading?: string;
+};
 type CardAnalysis = {
   newCount: number;
   learningCount: number;
@@ -40,7 +48,7 @@ export async function analysisRoutes(app: FastifyInstance) {
         }
         const status: WordStatus | 'new' = known.words[tok.lemma]?.status ?? 'new';
         seen[status].add(tok.lemma);
-        out.push({ t: tok.surface, s: status });
+        out.push({ t: tok.surface, s: status, lemma: tok.lemma, reading: tok.reading });
       }
       words[cue.index] = {
         newCount: seen.new.size,

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue';
 import { RouterLink } from 'vue-router';
-import { fetchCards, streamSse, saveDecisions, freeSpace } from '../api';
+import { fetchCards, fetchPicks, streamSse, freeSpace } from '../api';
 import { useSessionStore } from '../stores/session';
 import { useSettingsStore } from '../stores/settings';
 
@@ -23,7 +23,7 @@ const freeing = ref(false);
 const freedMsg = ref<string | null>(null);
 
 const exportTargetCount = computed(() =>
-  includeExported.value ? session.keptCount : session.pendingExportCount,
+  includeExported.value ? session.pileCount : session.pendingExportCount,
 );
 
 const canExport = computed(
@@ -42,10 +42,11 @@ onMounted(async () => {
   try {
     const data = await fetchCards(props.sid);
     session.cards = data.cards;
-    session.decisions = { ...data.decisions };
     videoRemoved.value = data.videoRemoved;
+    const piles = await fetchPicks(props.sid);
+    session.picks = piles.picks;
   } catch {
-    // non-fatal — if the user reloaded right after upload, decisions will catch up
+    // non-fatal — pile UI will catch up on next refresh
   }
 });
 
@@ -80,9 +81,6 @@ async function exportDeck() {
   downloadUrl.value = null;
   downloadName.value = null;
 
-  // Persist decisions one last time.
-  await saveDecisions(props.sid, session.decisions);
-
   let succeeded = false;
   try {
     await streamSse(
@@ -110,7 +108,9 @@ async function exportDeck() {
           enrichedTotal.value = d.total ?? 0;
           stage.value = 'enrich';
         } else if (event === 'progress') {
+          // Server emits two kinds (word, grammar). Display whichever is currently advancing.
           enrichedDone.value = d.done ?? 0;
+          if (typeof d.total === 'number') enrichedTotal.value = d.total;
         } else if (event === 'build') {
           stage.value = 'package';
         } else if (event === 'ready') {
@@ -123,10 +123,10 @@ async function exportDeck() {
         }
       },
     );
-    // Refresh local card state so exported flags update without a reload.
+    // Refresh local pile state so the exported flags update without a reload.
     if (succeeded) {
-      const data = await fetchCards(props.sid);
-      session.cards = data.cards;
+      const piles = await fetchPicks(props.sid);
+      session.picks = piles.picks;
     }
   } catch (err) {
     error.value = err instanceof Error ? err.message : String(err);
@@ -140,13 +140,12 @@ async function exportDeck() {
   <section class="export">
     <h1>Export</h1>
     <p class="muted">
-      Kept {{ session.keptCount }} of {{ session.cards.length }} cards.
+      Pile: {{ session.pileCount }} picked word{{ session.pileCount === 1 ? '' : 's' }}.
       <span v-if="session.alreadyExportedCount > 0">
-        {{ session.alreadyExportedCount }} are already in a previous .apkg,
-        {{ session.pendingExportCount }} are new.
+        {{ session.alreadyExportedCount }} already in previous .apkgs · {{ session.pendingExportCount }} new.
       </span>
-      Each card included will be enriched with vocabulary and grammar via OpenRouter, then bundled
-      as a single .apkg.
+      Every pick becomes one Anki vocab card. Word definitions, grammar and the rest of the back
+      are generated via OpenRouter at build time.
     </p>
 
     <p v-if="!settings.isConfigured" class="warn">
@@ -160,7 +159,7 @@ async function exportDeck() {
 
     <label v-if="session.alreadyExportedCount > 0" class="checkbox">
       <input type="checkbox" v-model="includeExported" />
-      Also include the {{ session.alreadyExportedCount }} cards from previous exports
+      Also include the {{ session.alreadyExportedCount }} picks shipped previously
       <span class="muted small">(re-enriches them and produces a single full deck)</span>
     </label>
 
@@ -170,8 +169,8 @@ async function exportDeck() {
           busy
             ? 'Working…'
             : exportTargetCount === 0
-              ? 'No cards to export'
-              : `Generate & download .apkg (${exportTargetCount} cards)`
+              ? 'Pile is empty'
+              : `Generate & download .apkg (${exportTargetCount} card${exportTargetCount === 1 ? '' : 's'})`
         }}
       </button>
       <RouterLink :to="{ name: 'review', params: { sid } }" class="ghost">Back to review</RouterLink>

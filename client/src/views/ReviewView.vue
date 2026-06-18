@@ -2,19 +2,21 @@
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import {
+  addPicks,
   fetchAnalysis,
   fetchCards,
+  fetchPicks,
   mediaUrl,
   mergeWithPrevious,
   relinkVideo,
   relinkYoutube,
-  saveDecisions,
+  removePick,
   streamSse,
   updateCard,
   type CardAnalysis,
   type CardSummary,
-  type Decision,
   type EditProposal,
+  type PickTokenInput,
 } from '../api';
 import { useSessionStore } from '../stores/session';
 import { useSettingsStore } from '../stores/settings';
@@ -39,6 +41,7 @@ const retimeTotal = ref(0);
 const retimeError = ref<string | null>(null);
 
 const showChat = ref(false);
+const showPile = ref(true);
 const merging = ref(false);
 const mergeError = ref<string | null>(null);
 const canMerge = computed(() => index.value > 0 && !!current.value && !merging.value);
@@ -53,15 +56,20 @@ const relinkMismatch = ref(false);
 const fileInput = ref<HTMLInputElement | null>(null);
 
 const current = computed<CardSummary | undefined>(() => session.cards[index.value]);
-const currentDecision = computed<Decision | undefined>(() =>
-  current.value ? session.decisions[current.value.index] : undefined,
-);
+
+// Selection: per-cue map of token-index → true. Cleared on cue change.
+const selectedTokensByCue = ref<Record<number, Set<number>>>({});
+const currentSelection = computed<Set<number>>(() => {
+  const cue = current.value;
+  if (!cue) return new Set();
+  return selectedTokensByCue.value[cue.index] ?? new Set();
+});
+const selectedCount = computed(() => currentSelection.value.size);
 
 const analysis = ref<Record<number, CardAnalysis>>({});
 const currentAnalysis = computed<CardAnalysis | undefined>(() =>
   current.value ? analysis.value[current.value.index] : undefined,
 );
-// Only highlight once there's a known-words list to compare against.
 const hasKnownData = computed(() =>
   Object.values(analysis.value).some(
     (a) => a.knownCount + a.learningCount + a.createdCount > 0,
@@ -72,53 +80,93 @@ async function loadAnalysis() {
   try {
     analysis.value = await fetchAnalysis(props.sid);
   } catch {
-    // analysis is a nice-to-have; ignore if the tokenizer/known list isn't ready
+    // optional — known list / tokenizer may not be ready
   }
 }
 
-function autoSkipKnown() {
-  let skipped = 0;
-  for (const card of session.cards) {
-    const a = analysis.value[card.index];
-    if (a && a.newCount === 0 && session.decisions[card.index] !== 'skip') {
-      session.decisions[card.index] = 'skip';
-      skipped++;
-    }
+async function refreshPicks() {
+  try {
+    const data = await fetchPicks(props.sid);
+    session.picks = data.picks;
+  } catch (err) {
+    // non-fatal — pile UI may briefly be stale
   }
-  if (skipped > 0) {
-    scheduleSave();
-    next();
-  }
-}
-
-let saveTimer: ReturnType<typeof setTimeout> | null = null;
-function scheduleSave() {
-  if (saveTimer) clearTimeout(saveTimer);
-  saveTimer = setTimeout(() => {
-    void saveDecisions(props.sid, session.decisions);
-  }, 400);
 }
 
 const noteDraft = ref('');
 let noteTimer: ReturnType<typeof setTimeout> | null = null;
 
 function scheduleNoteSave() {
-  const card = current.value;
-  if (!card) return;
+  const cue = current.value;
+  if (!cue) return;
   if (noteTimer) clearTimeout(noteTimer);
   const value = noteDraft.value;
   noteTimer = setTimeout(() => {
-    card.note = value;
-    void updateCard(props.sid, card.index, { note: value });
+    cue.note = value;
+    void updateCard(props.sid, cue.index, { note: value });
   }, 500);
 }
 
-function decide(d: Decision) {
-  const card = current.value;
-  if (!card) return;
-  session.decisions[card.index] = d;
-  scheduleSave();
-  next();
+function toggleToken(tokenIdx: number) {
+  const cue = current.value;
+  if (!cue) return;
+  const set = selectedTokensByCue.value[cue.index] ?? new Set<number>();
+  if (set.has(tokenIdx)) set.delete(tokenIdx);
+  else set.add(tokenIdx);
+  // Reassign so Vue reactivity picks up the change.
+  selectedTokensByCue.value = {
+    ...selectedTokensByCue.value,
+    [cue.index]: new Set(set),
+  };
+}
+
+function clearCueSelection(cueIndex: number) {
+  if (selectedTokensByCue.value[cueIndex]) {
+    const next = { ...selectedTokensByCue.value };
+    delete next[cueIndex];
+    selectedTokensByCue.value = next;
+  }
+}
+
+async function commitPicks() {
+  const cue = current.value;
+  if (!cue) return;
+  const analysisRow = currentAnalysis.value;
+  const selected = currentSelection.value;
+  if (!analysisRow || selected.size === 0) return;
+  const tokens: PickTokenInput[] = [];
+  selected.forEach((tokenIdx) => {
+    const tok = analysisRow.tokens[tokenIdx];
+    if (!tok) return;
+    tokens.push({
+      surface: tok.t,
+      lemma: tok.lemma ?? tok.t,
+      reading: tok.reading ?? '',
+    });
+  });
+  if (tokens.length === 0) return;
+  try {
+    await addPicks(props.sid, cue.index, tokens);
+    clearCueSelection(cue.index);
+    await refreshPicks();
+    next();
+  } catch (err) {
+    error.value = err instanceof Error ? err.message : String(err);
+  }
+}
+
+async function removeFromPile(pickId: string) {
+  const before = session.picks.length;
+  session.picks = session.picks.filter((p) => p.id !== pickId);
+  try {
+    await removePick(props.sid, pickId);
+  } catch (err) {
+    // Best-effort: refetch the truth if delete failed.
+    void refreshPicks();
+    error.value = err instanceof Error ? err.message : String(err);
+    return;
+  }
+  if (session.picks.length === before) void refreshPicks();
 }
 
 function next() {
@@ -135,18 +183,28 @@ function replay() {
   }
 }
 
+function nextCueWithNewWords() {
+  for (let i = index.value + 1; i < session.cards.length; i++) {
+    const cue = session.cards[i]!;
+    const a = analysis.value[cue.index];
+    if (!a || a.newCount > 0) {
+      index.value = i;
+      return;
+    }
+  }
+  // None found — stay put.
+}
+
 function onKey(e: KeyboardEvent) {
   if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
-  if (e.key === 'k' || e.key === 'K') decide('keep');
-  else if (e.key === 's' || e.key === 'S') decide('skip');
+  if (e.key === 'a' || e.key === 'A') void commitPicks();
   else if (e.key === 'ArrowRight') next();
   else if (e.key === 'ArrowLeft') prev();
   else if (e.code === 'Space') {
     e.preventDefault();
     replay();
-  } else if (e.key === 'm' || e.key === 'M') {
-    void mergePrev();
-  }
+  } else if (e.key === 'm' || e.key === 'M') void mergePrev();
+  else if (e.key === 'p' || e.key === 'P') showPile.value = !showPile.value;
 }
 
 async function mergePrev() {
@@ -161,7 +219,7 @@ async function mergePrev() {
     const res = await mergeWithPrevious(props.sid, current.value.index);
     const data = await fetchCards(props.sid);
     session.cards = data.cards;
-    // Position returned by the server points at the merged card in the new list.
+    void refreshPicks(); // merge re-keyed picks server-side
     index.value = res.newPosition;
   } catch (err) {
     mergeError.value = err instanceof Error ? err.message : String(err);
@@ -196,10 +254,8 @@ async function retime(scope: 'all' | 'from-here') {
         else if (event === 'error') retimeError.value = d.message ?? 'retime failed';
       },
     );
-    // Refetch so we get updated rev (which cache-busts audio/screenshot URLs).
     const data = await fetchCards(props.sid);
     session.cards = data.cards;
-    // Force a re-render of the audio/img by nudging the index ref.
     const i = index.value;
     index.value = -1;
     await new Promise((r) => setTimeout(r, 0));
@@ -212,7 +268,6 @@ async function retime(scope: 'all' | 'from-here') {
 }
 
 watch(index, () => {
-  // autoplay on card change
   if (audioEl.value) {
     audioEl.value.currentTime = 0;
     audioEl.value.play().catch(() => undefined);
@@ -221,9 +276,9 @@ watch(index, () => {
 
 watch(
   current,
-  (card) => {
+  (cue) => {
     if (noteTimer) clearTimeout(noteTimer);
-    noteDraft.value = card?.note ?? '';
+    noteDraft.value = cue?.note ?? '';
   },
   { immediate: true },
 );
@@ -234,13 +289,10 @@ onMounted(async () => {
   try {
     const data = await fetchCards(props.sid);
     session.cards = data.cards;
-    session.decisions = { ...data.decisions };
     source.value = data.source;
     videoRemoved.value = data.videoRemoved;
     void loadAnalysis();
-    // jump to first undecided
-    const firstUndecided = data.cards.findIndex((c) => !data.decisions[c.index]);
-    if (firstUndecided >= 0) index.value = firstUndecided;
+    void refreshPicks();
   } catch (err) {
     error.value = err instanceof Error ? err.message : String(err);
   } finally {
@@ -250,7 +302,6 @@ onMounted(async () => {
 
 onUnmounted(() => {
   window.removeEventListener('keydown', onKey);
-  if (saveTimer) clearTimeout(saveTimer);
   if (noteTimer) clearTimeout(noteTimer);
 });
 
@@ -313,14 +364,17 @@ async function relinkFromYoutube() {
 }
 
 async function applyEdit(edit: EditProposal) {
-  const card = current.value;
-  if (!card) return;
+  const cue = current.value;
+  if (!cue) return;
   try {
-    const updated = await updateCard(props.sid, card.index, edit);
-    card.text = updated.text;
-    card.translation = updated.translation;
-    card.note = updated.note;
+    const updated = await updateCard(props.sid, cue.index, edit);
+    cue.text = updated.text;
+    cue.translation = updated.translation;
+    cue.note = updated.note;
     noteDraft.value = updated.note ?? '';
+    // Tokenization may shift indices on text edit — clear selection for this cue.
+    clearCueSelection(cue.index);
+    void loadAnalysis();
   } catch (err) {
     error.value = err instanceof Error ? err.message : String(err);
   }
@@ -329,16 +383,26 @@ async function applyEdit(edit: EditProposal) {
 function goExport() {
   router.push({ name: 'export', params: { sid: props.sid } });
 }
+
+const picksForCurrentCue = computed(() =>
+  current.value ? session.picks.filter((p) => p.cueIndex === current.value!.index) : [],
+);
 </script>
 
 <template>
-  <section class="review" :class="{ 'review--wide': showChat }">
+  <section class="review" :class="{ 'review--wide': showChat || showPile }">
     <header class="review__header">
       <div class="status-cluster">
         <div class="counts">
-          <span class="counts__seg counts__seg--kept"><b>{{ session.keptCount }}</b> keep</span>
-          <span class="counts__seg counts__seg--skipped"><b>{{ session.skippedCount }}</b> skip</span>
-          <span class="counts__seg"><b>{{ session.remainingCount }}</b> left</span>
+          <span class="counts__seg counts__seg--pile">
+            <b>{{ session.pileCount }}</b> in pile
+          </span>
+          <span
+            v-if="picksForCurrentCue.length > 0"
+            class="counts__seg counts__seg--here"
+          >
+            <b>{{ picksForCurrentCue.length }}</b> from this cue
+          </span>
         </div>
         <span
           v-if="currentAnalysis && hasKnownData"
@@ -350,6 +414,9 @@ function goExport() {
       </div>
       <div class="position">{{ index + 1 }} / {{ session.cards.length }}</div>
       <div class="header-actions">
+        <button class="ghost" :class="{ active: showPile }" @click="showPile = !showPile">
+          Pile ({{ session.pileCount }})
+        </button>
         <button class="ghost" :class="{ active: showChat }" @click="showChat = !showChat">
           Chat
         </button>
@@ -358,7 +425,9 @@ function goExport() {
             {{ merging ? 'Merging…' : 'Merge with previous' }}
           </button>
           <button @click="toggleRetime">Retime</button>
-          <button v-if="hasKnownData" @click="autoSkipKnown">Skip known cards</button>
+          <button v-if="hasKnownData" @click="nextCueWithNewWords">
+            Skip to next cue with new words
+          </button>
           <button
             v-if="hasKnownData"
             @click="settings.underlineByStatus = !settings.underlineByStatus"
@@ -419,11 +488,7 @@ function goExport() {
         <span class="retime__hint">seconds — positive delays, negative advances</span>
       </div>
       <div class="retime__row">
-        <button
-          class="primary"
-          :disabled="!retimeSeconds || retiming"
-          @click="retime('all')"
-        >
+        <button class="primary" :disabled="!retimeSeconds || retiming" @click="retime('all')">
           Apply to all
         </button>
         <button
@@ -441,7 +506,7 @@ function goExport() {
       <div v-if="retimeError" class="err">{{ retimeError }}</div>
     </div>
 
-    <div class="review__main" :class="{ 'review__main--chat': showChat }">
+    <div class="review__main" :class="{ 'review__main--side': showChat || showPile }">
     <div class="review__col">
     <p v-if="loading" class="muted">Loading…</p>
     <p v-else-if="error" class="err">{{ error }}</p>
@@ -455,18 +520,41 @@ function goExport() {
         <div class="rule">
           <span class="rule__bar"></span><span class="rule__label">Sentence</span>
         </div>
-        <p class="sentence">
-          <template v-if="currentAnalysis && hasKnownData && settings.underlineByStatus">
-            <span
-              v-for="(tok, i) in currentAnalysis.tokens"
-              :key="i"
-              :class="tok.s ? `tok tok--${tok.s}` : undefined"
-              >{{ tok.t }}</span
-            >
-          </template>
-          <template v-else>{{ current.text }}</template>
+
+        <!-- Interactive tokenized sentence -->
+        <p class="sentence" v-if="currentAnalysis">
+          <span
+            v-for="(tok, i) in currentAnalysis.tokens"
+            :key="i"
+            class="tok"
+            :class="[
+              tok.s && settings.underlineByStatus ? `tok--${tok.s}` : '',
+              currentSelection.has(i) ? 'tok--picked' : '',
+              tok.lemma ? 'tok--clickable' : 'tok--literal',
+            ]"
+            @click="tok.lemma ? toggleToken(i) : null"
+          >{{ tok.t }}</span>
         </p>
+        <p class="sentence sentence--plain" v-else>{{ current.text }}</p>
+
         <p v-if="current.translation" class="translation">{{ current.translation }}</p>
+
+        <div class="commit-row">
+          <button
+            class="primary commit-btn"
+            :disabled="selectedCount === 0"
+            @click="commitPicks"
+          >
+            {{ selectedCount === 0
+              ? 'Click words to add'
+              : `Add ${selectedCount} card${selectedCount === 1 ? '' : 's'} to pile (A)` }}
+          </button>
+          <span v-if="picksForCurrentCue.length > 0" class="muted small">
+            Already added from this cue:
+            <span class="from-here" v-for="p in picksForCurrentCue" :key="p.id">{{ p.lemma }}</span>
+          </span>
+        </div>
+
         <audio
           v-if="current.audioReady"
           ref="audioEl"
@@ -483,20 +571,33 @@ function goExport() {
           v-model="noteDraft"
           class="note"
           rows="2"
-          placeholder="Add a note for this card (saved to Anki)…"
+          placeholder="Note shared by every card from this cue…"
           @input="scheduleNoteSave"
         ></textarea>
-
-        <div
-          v-if="currentDecision"
-          class="state"
-          :class="currentDecision === 'keep' ? 'state--keep' : 'state--skip'"
-        >
-          {{ currentDecision === 'keep' ? 'KEEP' : 'SKIP' }}
-        </div>
       </div>
     </article>
     </div>
+
+    <aside v-if="showPile" class="review__side">
+      <h3>Pile <span class="muted small">({{ session.pileCount }})</span></h3>
+      <p v-if="session.picks.length === 0" class="muted small">
+        Empty — click words in any sentence and press A.
+      </p>
+      <ul v-else class="pile-list">
+        <li v-for="p in session.picks" :key="p.id" class="pile-item">
+          <button class="pile-item__head" @click="index = session.cards.findIndex((c) => c.index === p.cueIndex)">
+            <span class="pile-item__lemma">{{ p.lemma }}</span>
+            <span v-if="p.surface !== p.lemma" class="pile-item__surface muted small">({{ p.surface }})</span>
+          </button>
+          <span class="pile-item__meta muted small">cue #{{ p.cueIndex }}</span>
+          <span v-if="p.exported" class="pile-item__exported small">exported</span>
+          <button class="pile-item__del" title="Remove from pile" @click="removeFromPile(p.id)">
+            ×
+          </button>
+        </li>
+      </ul>
+    </aside>
+
     <div v-if="showChat && current" class="review__chat">
       <ChatPanel :sid="sid" :card="current" @apply="applyEdit" />
     </div>
@@ -509,7 +610,7 @@ function goExport() {
   max-width: 720px;
 }
 .review--wide {
-  max-width: 1140px;
+  max-width: 1240px;
 }
 .review__main {
   display: flex;
@@ -519,6 +620,18 @@ function goExport() {
 .review__col {
   flex: 1;
   min-width: 0;
+}
+.review__side {
+  width: 280px;
+  flex-shrink: 0;
+  position: sticky;
+  top: 16px;
+  max-height: min(78vh, 720px);
+  overflow-y: auto;
+  background: var(--bBg);
+  border: 1px solid var(--pageLine);
+  border-radius: 6px;
+  padding: 12px 14px;
 }
 .review__chat {
   width: 380px;
@@ -538,19 +651,76 @@ button.ghost.active {
   gap: 14px;
   margin-bottom: 22px;
 }
-.header-actions {
+.status-cluster {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.counts {
   display: flex;
   gap: 8px;
+  font-size: 12px;
+}
+.counts__seg {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 9px;
+  border: 1px solid var(--pageLine);
+  border-radius: 999px;
+  color: var(--pageMuted);
+}
+.counts__seg--pile,
+.counts__seg--pile b {
+  color: var(--accent);
+}
+.counts__seg--here {
+  color: var(--pageInk);
+}
+.position {
+  font-family: ui-monospace, monospace;
+  font-size: 13px;
+  color: var(--pageMuted);
+}
+button.ghost {
+  background: transparent;
+  border: 1px solid var(--pageLine);
+  padding: 6px 12px;
+  border-radius: 5px;
+  font-size: 12px;
+  cursor: pointer;
+  color: var(--pageInk);
+  letter-spacing: 0.04em;
+}
+.header-actions {
+  display: flex;
+  gap: 6px;
+}
+.newchip {
+  font-size: 11px;
+  letter-spacing: 0.05em;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--pageLine);
+  color: var(--pageMuted);
+}
+.newchip--new {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+.newchip--allknown {
+  color: var(--pageMuted);
+  opacity: 0.6;
 }
 .retime {
   background: var(--bBg);
   border: 1px solid var(--pageLine);
   border-radius: 6px;
-  padding: 14px 16px;
-  margin-bottom: 18px;
+  padding: 12px 14px;
+  margin-bottom: 14px;
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 8px;
 }
 .retime__row {
   display: flex;
@@ -561,19 +731,9 @@ button.ghost.active {
 .retime__label {
   font-size: 11px;
   font-weight: 700;
-  letter-spacing: 0.18em;
+  letter-spacing: 0.15em;
   text-transform: uppercase;
   color: var(--pageMuted);
-}
-.retime__row input[type='number'] {
-  background: var(--bPanel);
-  border: 1px solid var(--pageLine);
-  border-radius: 5px;
-  padding: 6px 10px;
-  font-size: 14px;
-  font-family: ui-monospace, monospace;
-  color: var(--pageInk);
-  width: 110px;
 }
 .retime__hint {
   font-size: 12px;
@@ -591,7 +751,7 @@ button.ghost.active {
   color: white;
   padding: 8px 14px;
   border-radius: 5px;
-  font-size: 12px;
+  font-size: 13px;
   cursor: pointer;
   letter-spacing: 0.04em;
 }
@@ -599,74 +759,24 @@ button.ghost.active {
   opacity: 0.5;
   cursor: not-allowed;
 }
-.status-cluster {
+.commit-row {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin: 12px 0 4px;
 }
-.counts {
-  display: inline-flex;
-  align-items: stretch;
-  border: 1px solid var(--pageLine);
-  border-radius: 999px;
-  overflow: hidden;
-  font-size: 11px;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
+.commit-btn {
+  flex-shrink: 0;
 }
-.counts__seg {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  padding: 5px 12px;
-  color: var(--pageMuted);
-}
-.counts__seg + .counts__seg {
-  border-left: 1px solid var(--pageLine);
-}
-.counts__seg b {
-  font-variant-numeric: tabular-nums;
-  font-weight: 700;
-  letter-spacing: 0;
-}
-.counts__seg--kept,
-.counts__seg--kept b {
+.from-here {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: var(--accentSoft);
   color: var(--accent);
-}
-.counts__seg--skipped,
-.counts__seg--skipped b {
-  color: #c83a3a;
-}
-.newchip {
-  padding: 5px 11px;
-  border: 1px solid var(--pageLine);
-  border-radius: 999px;
-  font-size: 11px;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  color: var(--pageMuted);
-}
-.newchip--new {
-  color: #c8902a;
-  border-color: #c8902a;
-}
-.newchip--allknown {
-  color: var(--pageMuted);
-}
-.position {
-  font-family: ui-monospace, monospace;
-  font-size: 13px;
-  color: var(--pageMuted);
-}
-button.ghost {
-  background: transparent;
-  border: 1px solid var(--pageLine);
-  padding: 8px 14px;
-  border-radius: 5px;
-  font-size: 12px;
-  cursor: pointer;
-  color: var(--pageInk);
-  letter-spacing: 0.06em;
+  font-family: 'Zen Kaku Gothic New', sans-serif;
 }
 .card {
   background: var(--bBg);
@@ -718,27 +828,9 @@ button.ghost {
 .sentence {
   font-family: 'Zen Kaku Gothic New', sans-serif;
   font-size: 24px;
-  line-height: 1.7;
+  line-height: 1.85;
   color: var(--bInk);
   margin: 0;
-}
-/* Underline content words by status; known words are left unmarked. */
-.tok {
-  text-decoration-line: underline;
-  text-decoration-thickness: 2px;
-  text-underline-offset: 4px;
-}
-.tok--known {
-  text-decoration-line: none;
-}
-.tok--learning {
-  text-decoration-color: #e0922a;
-}
-.tok--created {
-  text-decoration-color: #9aa0a6;
-}
-.tok--new {
-  text-decoration-color: #d64545;
 }
 .translation {
   font-size: 15px;
@@ -748,42 +840,135 @@ button.ghost {
   border-left: 2px solid var(--accent);
   padding-left: 10px;
 }
-.note {
-  width: 100%;
-  background: var(--bPanel);
-  border: 1px solid var(--bLine);
-  border-radius: 5px;
-  padding: 8px 10px;
-  font-size: 14px;
-  line-height: 1.5;
-  color: var(--bInk);
-  font-family: inherit;
-  resize: vertical;
-}
 audio {
   width: 100%;
 }
-.state {
-  align-self: flex-start;
-  padding: 4px 10px;
+.note {
+  width: 100%;
+  resize: vertical;
+  background: var(--bPanel);
+  border: 1px solid var(--bLine);
   border-radius: 4px;
-  font-size: 11px;
-  letter-spacing: 0.18em;
-}
-.state--keep {
-  background: var(--accent);
-  color: white;
-}
-.state--skip {
-  background: #c83a3a;
-  color: white;
+  padding: 8px 10px;
+  font-family: inherit;
+  font-size: 13px;
+  color: var(--bInk);
+  line-height: 1.5;
 }
 .muted {
   color: var(--pageMuted);
   font-size: 13px;
 }
+.small {
+  font-size: 12px;
+}
 .err {
   color: #c83a3a;
   font-size: 13px;
+}
+.tok {
+  display: inline-block;
+  border-bottom: 2px solid transparent;
+  padding-bottom: 1px;
+  margin: 1px 0;
+  border-radius: 3px;
+}
+.tok--clickable {
+  cursor: pointer;
+  transition: background 80ms ease;
+}
+.tok--clickable:hover {
+  background: var(--bPanel);
+}
+.tok--literal {
+  color: var(--bMuted);
+}
+.tok--picked {
+  background: var(--accentSoft);
+  color: var(--accent);
+}
+.tok--known {
+  border-bottom-color: rgba(132, 201, 166, 0.35);
+}
+.tok--learning {
+  border-bottom-color: rgba(232, 180, 80, 0.55);
+}
+.tok--created {
+  border-bottom-color: rgba(150, 150, 150, 0.5);
+}
+.tok--new {
+  border-bottom-color: var(--accent);
+}
+.pile-list {
+  list-style: none;
+  padding: 0;
+  margin: 8px 0 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.pile-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 6px;
+  border: 1px solid var(--pageLine);
+  border-radius: 4px;
+  background: var(--bBg);
+}
+.pile-item__head {
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  display: flex;
+  align-items: baseline;
+  gap: 5px;
+  color: var(--pageInk);
+  font-family: 'Zen Kaku Gothic New', sans-serif;
+  text-align: left;
+  flex: 1;
+  min-width: 0;
+}
+.pile-item__lemma {
+  font-size: 14px;
+  font-weight: 600;
+}
+.pile-item__surface {
+  font-size: 11px;
+}
+.pile-item__meta {
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  margin-right: 4px;
+}
+.pile-item__exported {
+  font-size: 10px;
+  padding: 1px 5px;
+  border-radius: 999px;
+  background: var(--accentSoft);
+  color: var(--accent);
+}
+.pile-item__del {
+  background: none;
+  border: none;
+  color: var(--pageMuted);
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 2px 6px;
+}
+.pile-item__del:hover {
+  color: #c83a3a;
+}
+h3 {
+  font-family: 'Shippori Mincho', serif;
+  font-weight: 600;
+  font-size: 15px;
+  margin: 0;
+  display: flex;
+  gap: 6px;
+  align-items: baseline;
 }
 </style>

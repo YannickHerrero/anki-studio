@@ -10,10 +10,23 @@ export type CardSummary = {
   audioReady: boolean;
   screenshotReady: boolean;
   rev: number;
+};
+
+export type PickSummary = {
+  id: string;
+  cueIndex: number;
+  lemma: string;
+  surface: string;
+  reading: string;
+  addedAt: number;
   exported: boolean;
 };
 
-export type Decision = 'keep' | 'skip';
+export type PickTokenInput = {
+  surface: string;
+  lemma: string;
+  reading: string;
+};
 
 const BASE = '/api';
 
@@ -56,10 +69,37 @@ export async function fetchCards(sid: string): Promise<{
   source: 'upload' | 'youtube';
   videoRemoved: boolean;
   cards: CardSummary[];
-  decisions: Record<number, Decision>;
 }> {
   const res = await fetch(`${BASE}/session/${sid}/cards`);
   if (!res.ok) throw new Error(`fetchCards: ${res.status}`);
+  return res.json();
+}
+
+export async function fetchPicks(sid: string): Promise<{ picks: PickSummary[] }> {
+  const res = await fetch(`${BASE}/session/${sid}/picks`);
+  if (!res.ok) throw new Error(`fetchPicks: ${res.status}`);
+  return res.json();
+}
+
+export async function addPicks(
+  sid: string,
+  cueIndex: number,
+  tokens: PickTokenInput[],
+): Promise<{ addedCount: number; added: Array<{ id: string; lemma: string; surface: string }>; pileCount: number }> {
+  const res = await fetch(`${BASE}/session/${sid}/pick`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ cueIndex, tokens }),
+  });
+  if (!res.ok) throw new Error(`addPicks failed: ${res.status} ${await res.text()}`);
+  return res.json();
+}
+
+export async function removePick(sid: string, pickId: string): Promise<{ pileCount: number }> {
+  const res = await fetch(`${BASE}/session/${sid}/pick/${encodeURIComponent(pickId)}`, {
+    method: 'DELETE',
+  });
+  if (!res.ok) throw new Error(`removePick failed: ${res.status}`);
   return res.json();
 }
 
@@ -86,17 +126,6 @@ export async function relinkVideo(sid: string, file: File): Promise<RelinkResult
 
 export async function relinkYoutube(sid: string, onEvent: SseHandler): Promise<void> {
   await streamSse(`/session/${sid}/relink-youtube`, { method: 'POST' }, onEvent);
-}
-
-export async function saveDecisions(
-  sid: string,
-  decisions: Record<number, Decision>,
-): Promise<void> {
-  await fetch(`${BASE}/session/${sid}/decisions`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ decisions }),
-  });
 }
 
 export type CardEdit = {
@@ -174,7 +203,7 @@ export type CardAnalysis = {
   learningCount: number;
   knownCount: number;
   createdCount: number;
-  tokens: Array<{ t: string; s?: TokenStatus }>;
+  tokens: Array<{ t: string; s?: TokenStatus; lemma?: string; reading?: string }>;
 };
 
 export async function fetchAnalysis(sid: string): Promise<Record<number, CardAnalysis>> {
