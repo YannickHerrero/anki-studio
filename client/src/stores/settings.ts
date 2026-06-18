@@ -16,6 +16,7 @@ type Stored = {
   knownDecks?: string[];
   wordField?: string;
   knownThresholdDays?: number;
+  underlineByStatus?: boolean;
 };
 
 export const DEFAULT_ANKICONNECT_URL = 'http://127.0.0.1:8765';
@@ -39,6 +40,7 @@ export const useSettingsStore = defineStore('settings', () => {
   const knownDecks = ref<string[]>(initial.knownDecks ?? []);
   const wordField = ref(initial.wordField ?? '');
   const knownThresholdDays = ref(initial.knownThresholdDays ?? 10);
+  const underlineByStatus = ref(initial.underlineByStatus ?? true);
 
   const isConfigured = computed(() => openrouterKey.value.trim().length > 0);
   const isYoutubeReady = computed(
@@ -46,7 +48,16 @@ export const useSettingsStore = defineStore('settings', () => {
   );
 
   watch(
-    [openrouterKey, openaiKey, model, ankiConnectUrl, knownDecks, wordField, knownThresholdDays],
+    [
+      openrouterKey,
+      openaiKey,
+      model,
+      ankiConnectUrl,
+      knownDecks,
+      wordField,
+      knownThresholdDays,
+      underlineByStatus,
+    ],
     () => {
       localStorage.setItem(
         STORAGE_KEY,
@@ -58,6 +69,7 @@ export const useSettingsStore = defineStore('settings', () => {
           knownDecks: knownDecks.value,
           wordField: wordField.value,
           knownThresholdDays: knownThresholdDays.value,
+          underlineByStatus: underlineByStatus.value,
         }),
       );
     },
@@ -72,6 +84,7 @@ export const useSettingsStore = defineStore('settings', () => {
     knownDecks,
     wordField,
     knownThresholdDays,
+    underlineByStatus,
     isConfigured,
     isYoutubeReady,
   };
