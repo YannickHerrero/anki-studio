@@ -197,6 +197,70 @@ to disambiguate pronouns, register and references, but return ONE translation pe
 sentence. Return JSON matching the schema: translations[i] corresponds to sentence i+1.
 Keep translations concise and natural; preserve any named entities and proper nouns.`;
 
+const SPLIT_SCHEMA = {
+  type: 'object',
+  properties: {
+    sentenceEndIndices: {
+      type: 'array',
+      items: { type: 'integer' },
+      description:
+        'Indices (0-based) of words that end a sentence in the input list. ' +
+        'Always include the last word of the list as the final boundary.',
+    },
+  },
+  required: ['sentenceEndIndices'],
+  additionalProperties: false,
+};
+
+const SPLIT_SYSTEM = `You receive a numbered list of Japanese words from a transcript.
+Decide where complete sentences end. Return ONLY the 0-based indices of the words
+that are the LAST word of each sentence.
+Treat each clause-final 「ね」「よ」「か」+ pause, sentence-final particles, full stops,
+and natural ends as sentence boundaries. Do NOT rewrite the text — only choose indices.
+The last index in the input must always be included as a final boundary.`;
+
+export async function refineSentenceBoundaries(
+  words: { word: string }[],
+  opts: EnrichOptions,
+): Promise<number[]> {
+  if (words.length === 0) return [];
+
+  const numbered = words.map((w, i) => `${i}. ${w.word}`).join('\n');
+
+  const body = {
+    model: opts.model,
+    messages: [
+      { role: 'system', content: SPLIT_SYSTEM },
+      { role: 'user', content: numbered },
+    ],
+    response_format: {
+      type: 'json_schema',
+      json_schema: { name: 'sentence_splits', strict: true, schema: SPLIT_SCHEMA },
+    },
+  };
+
+  const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${opts.apiKey}`,
+      'HTTP-Referer': opts.referer ?? 'http://localhost:5173',
+      'X-Title': opts.appName ?? 'Anki Studio',
+    },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`openrouter ${res.status}: ${text.slice(0, 200)}`);
+  }
+  const json = (await res.json()) as ChatResponse;
+  const content = json.choices?.[0]?.message?.content;
+  if (!content) throw new Error('openrouter returned empty content');
+
+  const parsed = JSON.parse(content) as { sentenceEndIndices?: number[] };
+  return Array.isArray(parsed.sentenceEndIndices) ? parsed.sentenceEndIndices : [];
+}
+
 export async function translateBatch(
   sentences: string[],
   opts: EnrichOptions,

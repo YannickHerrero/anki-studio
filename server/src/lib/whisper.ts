@@ -26,7 +26,7 @@ function describeFetchError(err: unknown): string {
   return String(err);
 }
 
-type WhisperWord = {
+export type WhisperWord = {
   word: string;
   start: number;
   end: number;
@@ -125,7 +125,12 @@ function splitSegmentBySentence(
   return sentences;
 }
 
-export async function transcribe(opts: TranscribeOptions): Promise<SubtitleCue[]> {
+export type TranscribeResult = {
+  cues: SubtitleCue[];
+  words: WhisperWord[];
+};
+
+export async function transcribe(opts: TranscribeOptions): Promise<TranscribeResult> {
   const stat = await fs.promises.stat(opts.audioPath);
   if (stat.size > 25 * 1024 * 1024) {
     throw new Error(
@@ -177,6 +182,46 @@ export async function transcribe(opts: TranscribeOptions): Promise<SubtitleCue[]
     for (const s of splitSegmentBySentence(seg, pauseThresholdMs)) {
       cues.push({ index: idx++, startMs: s.startMs, endMs: s.endMs, text: s.text });
     }
+  }
+
+  // Word-level timestamps for downstream LLM refinement. Whisper returns
+  // a top-level `words` array when timestamp_granularities[] includes 'word'.
+  const words = json.words ?? segments.flatMap((s) => s.words ?? []);
+
+  return { cues, words };
+}
+
+/**
+ * Re-build cues from words + a sorted list of "this word ends a sentence"
+ * indices. Words 0..boundaries[0] form the first cue, etc. Any tail after
+ * the last boundary becomes its own cue.
+ */
+export function cuesFromBoundaries(
+  words: WhisperWord[],
+  boundaries: number[],
+): SubtitleCue[] {
+  if (words.length === 0) return [];
+  const sorted = [...new Set(boundaries)]
+    .filter((b) => Number.isInteger(b) && b >= 0 && b < words.length)
+    .sort((a, b) => a - b);
+  if (sorted[sorted.length - 1] !== words.length - 1) sorted.push(words.length - 1);
+
+  const cues: SubtitleCue[] = [];
+  let start = 0;
+  let idx = 0;
+  for (const end of sorted) {
+    const slice = words.slice(start, end + 1);
+    const text = slice
+      .map((w) => w.word)
+      .join('')
+      .replace(/\s+/g, ' ')
+      .trim();
+    if (text) {
+      const startMs = Math.max(0, Math.round(slice[0]!.start * 1000));
+      const endMs = Math.max(startMs + 1, Math.round(slice[slice.length - 1]!.end * 1000));
+      cues.push({ index: idx++, startMs, endMs, text });
+    }
+    start = end + 1;
   }
   return cues;
 }

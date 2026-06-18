@@ -3,6 +3,7 @@ import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { config } from '../config.js';
 import type { SubtitleCue } from './subtitles.js';
+import type { WhisperWord } from './whisper.js';
 
 export type Decision = 'keep' | 'skip';
 
@@ -30,6 +31,7 @@ export type Session = {
   subtitleOriginalName: string;
   cues: SubtitleCue[];
   cards: Card[];
+  whisperWords?: WhisperWord[];
   decisions: Record<number, Decision>;
   status: ProcessingStatus;
   errorMessage?: string;

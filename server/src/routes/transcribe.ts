@@ -36,12 +36,13 @@ export async function transcribeRoutes(app: FastifyInstance) {
     try {
       write('start', {});
       const audioPath = path.join(sessionDir(sid), 'full.mp3');
-      const cues = await transcribe({
+      const { cues, words } = await transcribe({
         apiKey: body.openaiKey,
         audioPath,
         language: body.language ?? 'ja',
       });
       session.cues = cues;
+      session.whisperWords = words;
       session.cards = cues.map((c) => ({
         ...c,
         audioReady: false,

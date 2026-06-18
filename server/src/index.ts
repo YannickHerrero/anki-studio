@@ -13,6 +13,7 @@ import { mergeRoutes } from './routes/merge.js';
 import { youtubeRoutes } from './routes/youtube.js';
 import { transcribeRoutes } from './routes/transcribe.js';
 import { translateRoutes } from './routes/translate.js';
+import { refineSplitsRoutes } from './routes/refineSplits.js';
 import { rehydrateSessions } from './lib/persistence.js';
 
 async function main() {
@@ -39,6 +40,7 @@ async function main() {
   await app.register(youtubeRoutes);
   await app.register(transcribeRoutes);
   await app.register(translateRoutes);
+  await app.register(refineSplitsRoutes);
 
   await app.listen({ port: config.port, host: config.host });
 }
