@@ -127,7 +127,10 @@ export async function exportRoutes(app: FastifyInstance) {
         details.forEach((d, k) => {
           const pick = slice[k]!;
           pick.details = d;
-          wordDetailsByPick.set(pick.id, wordDetailsToHtml(d));
+          // Pass lemma so the back's Word panel shows the dictionary form
+          // alongside reading/pos — useful when surface is conjugated.
+          const lemmaForPanel = pick.lemma !== pick.surface ? pick.lemma : undefined;
+          wordDetailsByPick.set(pick.id, wordDetailsToHtml(d, lemmaForPanel));
         });
         wordDone += slice.length;
         write('progress', { kind: 'word', done: wordDone, total: toShip.length });
@@ -168,7 +171,9 @@ export async function exportRoutes(app: FastifyInstance) {
         const audioFile = `as_${sid.slice(0, 8)}_${cue.index}.mp3`;
         const shotFile = `as_${sid.slice(0, 8)}_${cue.index}.jpg`;
         return {
-          targetWord: pick.lemma,
+          // Show the surface form (as the user picked it) on the front;
+          // the dictionary form lives inside WordDetails on the back.
+          targetWord: pick.surface,
           sentence: sentenceWithTarget,
           sentenceTranslation: cue.translation ?? enr?.translation ?? '',
           wordDetails: wordDetailsByPick.get(pick.id) ?? '',

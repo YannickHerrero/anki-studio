@@ -223,6 +223,15 @@
   gap: 8px;
 }
 
+.js-word-lemma {
+  font-family: 'Zen Kaku Gothic New', sans-serif;
+  font-weight: 700;
+  font-size: 22px;
+  color: var(--bInk);
+  letter-spacing: 0.02em;
+  line-height: 1.2;
+}
+
 .js-word-meta {
   display: flex;
   flex-wrap: wrap;

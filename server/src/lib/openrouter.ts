@@ -304,8 +304,8 @@ export async function enrichWordBatch(
   return out;
 }
 
-export function wordDetailsToHtml(details: WordDetailsOut): string {
-  if (!details.definition && !details.reading) return '';
+export function wordDetailsToHtml(details: WordDetailsOut, lemma?: string): string {
+  if (!details.definition && !details.reading && !lemma) return '';
   const meta: string[] = [];
   if (details.reading) meta.push(escapeHtml(details.reading));
   if (details.pitchPattern) meta.push(escapeHtml(details.pitchPattern));
@@ -317,7 +317,9 @@ export function wordDetailsToHtml(details: WordDetailsOut): string {
   const usageHtml = details.usageNotes
     ? `<div class="js-word-usage">${escapeHtml(details.usageNotes)}</div>`
     : '';
-  return `<div class="js-word">${metaHtml}<div class="js-word-def">${escapeHtml(details.definition)}</div>${usageHtml}</div>`;
+  // Dictionary form, shown when it adds information beyond the front's surface.
+  const lemmaHtml = lemma ? `<div class="js-word-lemma">${escapeHtml(lemma)}</div>` : '';
+  return `<div class="js-word">${lemmaHtml}${metaHtml}<div class="js-word-def">${escapeHtml(details.definition)}</div>${usageHtml}</div>`;
 }
 
 function escapeHtml(s: string): string {
