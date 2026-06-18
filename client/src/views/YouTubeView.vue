@@ -13,7 +13,14 @@ const url = ref('');
 const busy = ref(false);
 const error = ref<string | null>(null);
 
-type Phase = 'idle' | 'download' | 'transcribe' | 'translate' | 'process' | 'done';
+type Phase =
+  | 'idle'
+  | 'download'
+  | 'transcribe'
+  | 'refine'
+  | 'translate'
+  | 'process'
+  | 'done';
 const phase = ref<Phase>('idle');
 
 const downloadPct = ref(0);
@@ -87,7 +94,33 @@ async function go() {
       },
     );
 
-    // 3. Translate whole transcript in one call
+    // 3. Refine sentence splits with the LLM (uses word timestamps for timing).
+    // Best-effort: if it fails, keep the heuristic splits we already have.
+    phase.value = 'refine';
+    try {
+      await streamSse(
+        `/session/${sid}/refineSplits`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            openrouterKey: settings.openrouterKey.trim(),
+            model: settings.model,
+          }),
+        },
+        ({ event, data }) => {
+          const d = data as { cueCount?: number; message?: string };
+          if (event === 'done') cueCount.value = d.cueCount ?? cueCount.value;
+          else if (event === 'error') throw new Error(d.message ?? 'refine failed');
+        },
+      );
+    } catch (err) {
+      // Surface but don't abort the whole flow — heuristic cues are still usable.
+      // eslint-disable-next-line no-console
+      console.warn('split refinement failed, keeping heuristic cues:', err);
+    }
+
+    // 4. Translate whole transcript in one call
     phase.value = 'translate';
     await streamSse(
       `/session/${sid}/translate`,
@@ -105,7 +138,7 @@ async function go() {
       },
     );
 
-    // 4. Cut per-cue audio + screenshots (reuses /process)
+    // 5. Cut per-cue audio + screenshots (reuses /process)
     phase.value = 'process';
     processedTotal.value = cueCount.value;
     await streamSse(
@@ -134,6 +167,8 @@ const phaseLabel = computed(() => {
       return `Downloading ${downloadPct.value.toFixed(0)}%` + (audioStage.value === 'extracting' ? ' — extracting audio…' : '');
     case 'transcribe':
       return 'Transcribing with Whisper…';
+    case 'refine':
+      return 'Refining sentence splits with LLM…';
     case 'translate':
       return 'Translating whole transcript…';
     case 'process':
@@ -152,12 +187,14 @@ const overallPct = computed(() => {
       return Math.round(downloadPct.value * 0.4);
     case 'transcribe':
       return 45;
+    case 'refine':
+      return 55;
     case 'translate':
-      return 60;
+      return 65;
     case 'process':
       return processedTotal.value
-        ? 60 + Math.round((processedDone.value / processedTotal.value) * 40)
-        : 60;
+        ? 65 + Math.round((processedDone.value / processedTotal.value) * 35)
+        : 65;
     case 'done':
       return 100;
     default:
