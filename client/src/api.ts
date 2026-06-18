@@ -199,6 +199,35 @@ export async function fetchKnownSummary(): Promise<KnownSummary> {
   return res.json();
 }
 
+export type KnownWord = {
+  word: string;
+  status: WordStatus;
+  reading: string;
+  intervalDays: number;
+};
+
+export async function fetchKnownWords(): Promise<KnownWord[]> {
+  const res = await fetch(`${BASE}/known/words`);
+  if (!res.ok) throw new Error(`fetchKnownWords: ${res.status}`);
+  const data = await res.json();
+  return data.words as KnownWord[];
+}
+
+export type KnownSnapshot = {
+  date: string;
+  known: number;
+  learning: number;
+  created: number;
+  total: number;
+};
+
+export async function fetchKnownHistory(): Promise<KnownSnapshot[]> {
+  const res = await fetch(`${BASE}/known/history`);
+  if (!res.ok) throw new Error(`fetchKnownHistory: ${res.status}`);
+  const data = await res.json();
+  return data.history as KnownSnapshot[];
+}
+
 export async function fetchAnkiDecks(url?: string): Promise<string[]> {
   const q = url ? `?url=${encodeURIComponent(url)}` : '';
   const res = await fetch(`${BASE}/known/decks${q}`);
