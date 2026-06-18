@@ -58,7 +58,7 @@ function toggleDeck(deck: string) {
 
 async function sync() {
   if (!settings.knownDecks.length || !settings.wordField.trim()) {
-    error.value = 'Pick at least one deck and a word field first.';
+    error.value = 'Pick at least one deck and a sentence field first.';
     return;
   }
   syncing.value = true;
@@ -67,7 +67,6 @@ async function sync() {
     summary.value = await syncKnown({
       decks: settings.knownDecks,
       field: settings.wordField.trim(),
-      readingField: settings.readingField.trim() || undefined,
       knownThresholdDays: settings.knownThresholdDays,
       url: settings.ankiConnectUrl,
     });
@@ -108,9 +107,10 @@ onMounted(refresh);
   <section class="known">
     <h1>Known words</h1>
     <p class="muted">
-      Pull your vocabulary status from Anki via AnkiConnect. A card reviewed with an interval over
-      your threshold counts as <strong>known</strong>; shorter intervals are <strong>learning</strong>;
-      cards with no reviews yet are <strong>created</strong>. Used to spot new words while mining.
+      Pull your vocabulary status from Anki via AnkiConnect. Each card's sentence is tokenized and
+      every word inherits the card's review state: an interval over your threshold counts as
+      <strong>known</strong>; shorter intervals are <strong>learning</strong>; cards with no reviews
+      yet are <strong>created</strong>. Used to spot new words while mining.
     </p>
 
     <div class="stats" v-if="summary">
@@ -145,12 +145,8 @@ onMounted(refresh);
 
     <div class="row">
       <label class="field">
-        <span class="field__label">Word field</span>
+        <span class="field__label">Sentence field</span>
         <input v-model="settings.wordField" type="text" placeholder="e.g. Expression" />
-      </label>
-      <label class="field">
-        <span class="field__label">Reading field (optional)</span>
-        <input v-model="settings.readingField" type="text" placeholder="e.g. Reading" />
       </label>
       <label class="field field--narrow">
         <span class="field__label">Known after (days)</span>

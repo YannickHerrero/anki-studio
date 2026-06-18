@@ -210,7 +210,6 @@ export async function fetchAnkiDecks(url?: string): Promise<string[]> {
 export type SyncKnownPayload = {
   decks: string[];
   field: string;
-  readingField?: string;
   knownThresholdDays?: number;
   url?: string;
 };
