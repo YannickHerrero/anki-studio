@@ -9,6 +9,8 @@ Two sources are supported:
 
 Both paths land you in the **Review** step (keep / skip each card; audio autoplays, screenshot shown). For YouTube cards the English translation is shown next to the Japanese line during review.
 
+During review you can open a **Chat** panel to discuss the current line with an LLM — ask about grammar, or ask it to fix the translation, edit the Japanese, or add furigana to a proper noun. Every change comes back as a diff you explicitly **Apply** or **Reject**, and only ever touches the current line. The chat is ephemeral and resets when you move to another card. Each card also has a freeform **Note** field you can edit by hand (or via the chat) that is carried into the Anki card.
+
 Hit **Export** to bundle the kept cards as a single `.apkg`. Each card gets vocabulary and grammar notes generated via [OpenRouter](https://openrouter.ai). For YouTube cards the preprocessing translation is reused — what you reviewed is what lands in Anki.
 
 The card template comes from [`design/japanese-sentence-card.html`](./design/japanese-sentence-card.html) — open that file in any browser to see how the cards look on AnkiMobile and desktop, in light and dark mode.
