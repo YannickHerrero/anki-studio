@@ -12,7 +12,14 @@ type Stored = {
   openrouterKey?: string;
   openaiKey?: string;
   model?: string;
+  ankiConnectUrl?: string;
+  knownDecks?: string[];
+  wordField?: string;
+  readingField?: string;
+  knownThresholdDays?: number;
 };
+
+export const DEFAULT_ANKICONNECT_URL = 'http://127.0.0.1:8765';
 
 function load(): Stored {
   try {
@@ -29,6 +36,11 @@ export const useSettingsStore = defineStore('settings', () => {
   const openrouterKey = ref(initial.openrouterKey ?? '');
   const openaiKey = ref(initial.openaiKey ?? '');
   const model = ref(initial.model ?? MODEL_PRESETS[0].id);
+  const ankiConnectUrl = ref(initial.ankiConnectUrl ?? DEFAULT_ANKICONNECT_URL);
+  const knownDecks = ref<string[]>(initial.knownDecks ?? []);
+  const wordField = ref(initial.wordField ?? '');
+  const readingField = ref(initial.readingField ?? '');
+  const knownThresholdDays = ref(initial.knownThresholdDays ?? 10);
 
   const isConfigured = computed(() => openrouterKey.value.trim().length > 0);
   const isYoutubeReady = computed(
@@ -36,15 +48,35 @@ export const useSettingsStore = defineStore('settings', () => {
   );
 
   watch(
-    [openrouterKey, openaiKey, model],
-    ([orKey, oaKey, m]) => {
+    [openrouterKey, openaiKey, model, ankiConnectUrl, knownDecks, wordField, readingField, knownThresholdDays],
+    () => {
       localStorage.setItem(
         STORAGE_KEY,
-        JSON.stringify({ openrouterKey: orKey, openaiKey: oaKey, model: m }),
+        JSON.stringify({
+          openrouterKey: openrouterKey.value,
+          openaiKey: openaiKey.value,
+          model: model.value,
+          ankiConnectUrl: ankiConnectUrl.value,
+          knownDecks: knownDecks.value,
+          wordField: wordField.value,
+          readingField: readingField.value,
+          knownThresholdDays: knownThresholdDays.value,
+        }),
       );
     },
     { deep: true },
   );
 
-  return { openrouterKey, openaiKey, model, isConfigured, isYoutubeReady };
+  return {
+    openrouterKey,
+    openaiKey,
+    model,
+    ankiConnectUrl,
+    knownDecks,
+    wordField,
+    readingField,
+    knownThresholdDays,
+    isConfigured,
+    isYoutubeReady,
+  };
 });
