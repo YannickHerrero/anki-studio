@@ -1,5 +1,12 @@
 import type { FastifyInstance } from 'fastify';
-import { loadKnown, saveKnown, summarize, type KnownEntry, type WordStatus } from '../lib/knownWords.js';
+import {
+  loadKnown,
+  saveKnown,
+  summarize,
+  type KnownEntry,
+  type KnownStore,
+  type WordStatus,
+} from '../lib/knownWords.js';
 import { buildKnownFromAnki } from '../lib/knownSync.js';
 import { deckNames } from '../lib/ankiconnect.js';
 import { loadHistory, recordSnapshot } from '../lib/knownHistory.js';
@@ -16,7 +23,25 @@ type ImportBody = {
   text?: string;
 };
 
-const VALID_STATUS = new Set<WordStatus>(['known', 'learning', 'created']);
+const VALID_STATUS = new Set<WordStatus>(['known', 'learning', 'created', 'ignored']);
+const VALID_MARK_STATUS = new Set<WordStatus>(['known', 'ignored']);
+
+/**
+ * Returns a copy of the store with every `manual: true` entry from the
+ * previous store carried over. Used so /known/sync and /known/import don't
+ * stomp on entries the user marked via the review-view hotkeys.
+ */
+function carryManualEntries(prev: KnownStore, next: KnownStore): KnownStore {
+  const merged: KnownStore = {
+    updatedAt: next.updatedAt,
+    source: next.source,
+    words: { ...next.words },
+  };
+  for (const [lemma, entry] of Object.entries(prev.words)) {
+    if (entry.manual) merged.words[lemma] = entry;
+  }
+  return merged;
+}
 
 function parseTextList(text: string): Record<string, KnownEntry> {
   const words: Record<string, KnownEntry> = {};
@@ -77,12 +102,14 @@ export async function knownRoutes(app: FastifyInstance) {
       return reply.code(400).send({ error: 'word field is required' });
     }
     try {
-      const store = await buildKnownFromAnki({
+      const fresh = await buildKnownFromAnki({
         decks: body.decks,
         field: body.field,
         knownThresholdDays: body.knownThresholdDays,
         url: body.url,
       });
+      const prev = await loadKnown();
+      const store = carryManualEntries(prev, fresh);
       await saveKnown(store);
       const sum = summarize(store);
       await recordSnapshot({
@@ -108,7 +135,9 @@ export async function knownRoutes(app: FastifyInstance) {
     if (!words || Object.keys(words).length === 0) {
       return reply.code(400).send({ error: 'provide "words" or a non-empty "text" list' });
     }
-    const store = { updatedAt: Date.now(), source: 'import', words };
+    const fresh: KnownStore = { updatedAt: Date.now(), source: 'import', words };
+    const prev = await loadKnown();
+    const store = carryManualEntries(prev, fresh);
     await saveKnown(store);
     const sum = summarize(store);
     await recordSnapshot({
@@ -124,5 +153,43 @@ export async function knownRoutes(app: FastifyInstance) {
     const store = { updatedAt: Date.now(), words: {} };
     await saveKnown(store);
     return summarize(store);
+  });
+
+  /**
+   * Set / clear the status of a single lemma from the review-view hotkeys.
+   * Body: { lemma, status: 'known' | 'ignored' | null, reading? }
+   * - 'known'   → marks the word as known (manual=true)
+   * - 'ignored' → marks the word as ignored (manual=true)
+   * - null      → removes the manual entry, reverting to the Anki-derived
+   *               status (or 'new' if none).
+   */
+  app.post('/known/mark', async (req, reply) => {
+    const body = req.body as
+      | { lemma?: string; status?: WordStatus | null; reading?: string }
+      | undefined;
+    const lemma = body?.lemma?.trim();
+    if (!lemma) return reply.code(400).send({ error: 'lemma is required' });
+
+    const store = await loadKnown();
+    if (body?.status == null) {
+      // Clear an existing manual entry. If there's no entry or the entry was
+      // not manual, we still delete so the lemma reverts to 'new'.
+      delete store.words[lemma];
+    } else {
+      if (!VALID_MARK_STATUS.has(body.status)) {
+        return reply.code(400).send({ error: 'status must be "known", "ignored" or null' });
+      }
+      const existing = store.words[lemma];
+      const entry: KnownEntry = {
+        status: body.status,
+        manual: true,
+        reading: body?.reading || existing?.reading,
+        intervalDays: existing?.intervalDays,
+      };
+      store.words[lemma] = entry;
+    }
+    store.updatedAt = Date.now();
+    await saveKnown(store);
+    return { ok: true, lemma, status: store.words[lemma]?.status ?? null };
   });
 }

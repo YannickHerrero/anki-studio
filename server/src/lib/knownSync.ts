@@ -13,7 +13,16 @@ export type SyncOptions = {
   url?: string;
 };
 
-const RANK: Record<WordStatus, number> = { created: 0, learning: 1, known: 2 };
+const RANK: Record<WordStatus, number> = {
+  created: 0,
+  learning: 1,
+  known: 2,
+  // 'ignored' is a manual mark, not a maturity level — give it the highest rank
+  // so an entry already marked ignored isn't overwritten by a sync. (In practice
+  // manual entries are filtered out before this comparison runs, but this keeps
+  // the type complete.)
+  ignored: 99,
+};
 
 function stripHtml(s: string): string {
   return s.replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim();
@@ -22,7 +31,7 @@ function stripHtml(s: string): string {
 // Status from a card's review state. Interval is the current spacing in days;
 // a reviewed card spaced past the threshold is "known", anything still being
 // learned is "learning", and a card never reviewed is just "created".
-function classify(card: AnkiCardInfo, thresholdDays: number): WordStatus {
+function classify(card: AnkiCardInfo, thresholdDays: number): 'known' | 'learning' | 'created' {
   if (card.reps === 0 || card.type === 0) return 'created';
   if (card.type === 2 && card.interval > thresholdDays) return 'known';
   return 'learning';

@@ -2,12 +2,14 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { config } from '../config.js';
 
-export type WordStatus = 'known' | 'learning' | 'created';
+export type WordStatus = 'known' | 'learning' | 'created' | 'ignored';
 
 export type KnownEntry = {
   status: WordStatus;
   reading?: string;
   intervalDays?: number;
+  /** True when the user set this in the review UI (1/0 hotkeys). Sync preserves these. */
+  manual?: boolean;
 };
 
 export type KnownStore = {
@@ -54,22 +56,27 @@ export function summarize(store: KnownStore): {
   known: number;
   learning: number;
   created: number;
+  ignored: number;
   updatedAt: number;
   source?: string;
 } {
   let known = 0;
   let learning = 0;
   let created = 0;
+  let ignored = 0;
   for (const entry of Object.values(store.words)) {
     if (entry.status === 'known') known++;
     else if (entry.status === 'learning') learning++;
+    else if (entry.status === 'ignored') ignored++;
     else created++;
   }
   return {
+    // 'ignored' is excluded from total — it's a "skip me" mark, not vocabulary.
     total: known + learning + created,
     known,
     learning,
     created,
+    ignored,
     updatedAt: store.updatedAt,
     source: store.source,
   };

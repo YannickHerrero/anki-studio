@@ -40,6 +40,7 @@ export async function analysisRoutes(app: FastifyInstance) {
         known: new Set(),
         learning: new Set(),
         created: new Set(),
+        ignored: new Set(),
       };
       for (const tok of tokens) {
         if (!tok.content) {
@@ -51,6 +52,8 @@ export async function analysisRoutes(app: FastifyInstance) {
         out.push({ t: tok.surface, s: status, lemma: tok.lemma, reading: tok.reading });
       }
       words[cue.index] = {
+        // 'ignored' words contribute to NEITHER newCount NOR knownCount —
+        // they're a "skip me" mark that just hides the underline.
         newCount: seen.new.size,
         learningCount: seen.learning.size,
         knownCount: seen.known.size,
