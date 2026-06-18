@@ -54,6 +54,7 @@ export async function retimeRoutes(app: FastifyInstance) {
           extractAudio(session.videoPath, audioPath(sid, card.index), {
             startMs: card.startMs,
             endMs: card.endMs,
+            audioTrackIndex: session.audioTrackIndex,
           }).then(() => {
             card.audioReady = true;
           }),

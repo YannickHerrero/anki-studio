@@ -45,6 +45,7 @@ export async function mergeRoutes(app: FastifyInstance) {
       extractAudio(session.videoPath, audioPath(sid, merged.index), {
         startMs: merged.startMs,
         endMs: merged.endMs,
+        audioTrackIndex: session.audioTrackIndex,
       }).then(() => {
         merged.audioReady = true;
       }),

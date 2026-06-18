@@ -5,6 +5,7 @@ import type { FastifyInstance } from 'fastify';
 import { createSession, sessionDir } from '../lib/session.js';
 import { parseSubtitleFile } from '../lib/subtitles.js';
 import { persistSession } from '../lib/persistence.js';
+import { pickJapaneseTrack, probeAudioStreams } from '../lib/ffmpeg.js';
 
 const SUBTITLE_EXTS = new Set(['srt', 'ass', 'ssa', 'vtt']);
 
@@ -56,8 +57,25 @@ export async function uploadRoutes(app: FastifyInstance) {
       rev: 0,
     }));
     session.title = session.videoOriginalName;
+
+    // Probe audio tracks. If we can auto-pick Japanese, do so silently;
+    // otherwise leave audioTrackIndex unset and let the client prompt.
+    try {
+      const streams = await probeAudioStreams(session.videoPath);
+      session.audioStreams = streams;
+      const picked = pickJapaneseTrack(streams);
+      if (picked !== null) session.audioTrackIndex = picked;
+    } catch {
+      // ffprobe failure is non-fatal — fall back to track 0 at process time.
+    }
+
     persistSession(session, { immediate: true });
 
-    return { sessionId: session.id, cueCount: cues.length };
+    return {
+      sessionId: session.id,
+      cueCount: cues.length,
+      audioStreams: session.audioStreams ?? [],
+      audioTrackIndex: session.audioTrackIndex ?? null,
+    };
   });
 }

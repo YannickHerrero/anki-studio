@@ -44,6 +44,7 @@ export async function processRoutes(app: FastifyInstance) {
           extractAudio(session.videoPath, audioOut, {
             startMs: card.startMs,
             endMs: card.endMs,
+            audioTrackIndex: session.audioTrackIndex,
           }).then(() => {
             card.audioReady = true;
             audioDone++;

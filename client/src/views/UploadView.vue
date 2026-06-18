@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue';
 import { useRouter, RouterLink } from 'vue-router';
-import { upload } from '../api';
+import { upload, setAudioTrack, type AudioStream } from '../api';
 import { useSessionStore } from '../stores/session';
 import { useSettingsStore } from '../stores/settings';
 
@@ -13,6 +13,11 @@ const video = ref<File | null>(null);
 const subtitle = ref<File | null>(null);
 const busy = ref(false);
 const error = ref<string | null>(null);
+
+const pendingSessionId = ref<string | null>(null);
+const audioStreams = ref<AudioStream[]>([]);
+const chosenTrack = ref<number | null>(null);
+const savingTrack = ref(false);
 
 const subtitleExtOk = computed(() => {
   if (!subtitle.value) return true;
@@ -45,14 +50,46 @@ async function submit() {
   busy.value = true;
   error.value = null;
   try {
-    const { sessionId, cueCount } = await upload(video.value, subtitle.value);
-    session.sessionId = sessionId;
-    session.cueCount = cueCount;
-    router.push({ name: 'processing', params: { sid: sessionId } });
+    const result = await upload(video.value, subtitle.value);
+    session.sessionId = result.sessionId;
+    session.cueCount = result.cueCount;
+
+    // Multi-track file with no clear Japanese — ask the user before continuing.
+    if (result.audioStreams.length > 1 && result.audioTrackIndex === null) {
+      pendingSessionId.value = result.sessionId;
+      audioStreams.value = result.audioStreams;
+      chosenTrack.value = result.audioStreams[0]?.index ?? 0;
+      return;
+    }
+
+    router.push({ name: 'processing', params: { sid: result.sessionId } });
   } catch (err) {
     error.value = err instanceof Error ? err.message : String(err);
   } finally {
     busy.value = false;
+  }
+}
+
+function describeTrack(t: AudioStream): string {
+  const lang = t.language ? t.language.toUpperCase() : '—';
+  const title = t.title ? ` · ${t.title}` : '';
+  const def = t.isDefault ? ' (default)' : '';
+  return `${lang}${title}${def} · ${t.codec} ${t.channels}ch`;
+}
+
+async function confirmTrack() {
+  if (pendingSessionId.value === null || chosenTrack.value === null) return;
+  savingTrack.value = true;
+  error.value = null;
+  try {
+    await setAudioTrack(pendingSessionId.value, chosenTrack.value);
+    const sid = pendingSessionId.value;
+    pendingSessionId.value = null;
+    router.push({ name: 'processing', params: { sid } });
+  } catch (err) {
+    error.value = err instanceof Error ? err.message : String(err);
+  } finally {
+    savingTrack.value = false;
   }
 }
 
@@ -104,10 +141,36 @@ function formatBytes(n: number): string {
     </div>
 
     <div class="actions">
-      <button class="primary" :disabled="!canSubmit || busy" @click="submit">
+      <button class="primary" :disabled="!canSubmit || busy || !!pendingSessionId" @click="submit">
         {{ busy ? 'Uploading…' : 'Process' }}
       </button>
       <span v-if="error" class="err">{{ error }}</span>
+    </div>
+
+    <div v-if="pendingSessionId" class="track-picker">
+      <h2>Pick the Japanese audio track</h2>
+      <p class="muted small">
+        This file has {{ audioStreams.length }} audio tracks and none is unambiguously tagged
+        Japanese. Choose the one to use for clips and transcription.
+      </p>
+      <ul class="tracks">
+        <li v-for="t in audioStreams" :key="t.index" class="tracks__item">
+          <label>
+            <input type="radio" :value="t.index" v-model="chosenTrack" />
+            <span class="tracks__num">#{{ t.index }}</span>
+            <span class="tracks__desc">{{ describeTrack(t) }}</span>
+          </label>
+        </li>
+      </ul>
+      <div class="actions">
+        <button
+          class="primary"
+          :disabled="chosenTrack === null || savingTrack"
+          @click="confirmTrack"
+        >
+          {{ savingTrack ? 'Saving…' : 'Use this track' }}
+        </button>
+      </div>
     </div>
   </section>
 </template>
@@ -193,5 +256,50 @@ button.primary {
 button:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+.track-picker {
+  margin-top: 22px;
+  padding: 18px 20px;
+  border: 1px solid var(--pageLine);
+  border-radius: 6px;
+  background: var(--bBg);
+}
+.track-picker h2 {
+  font-family: 'Shippori Mincho', serif;
+  font-weight: 600;
+  font-size: 16px;
+  margin: 0 0 6px;
+}
+.track-picker .small {
+  font-size: 12px;
+  margin-bottom: 14px;
+}
+.tracks {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.tracks__item label {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border: 1px solid var(--pageLine);
+  border-radius: 5px;
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--pageInk);
+}
+.tracks__num {
+  font-family: ui-monospace, monospace;
+  font-size: 11px;
+  color: var(--pageMuted);
+  width: 30px;
+}
+.tracks__desc {
+  flex: 1;
 }
 </style>

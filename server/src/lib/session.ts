@@ -4,6 +4,7 @@ import { randomUUID } from 'node:crypto';
 import { config } from '../config.js';
 import type { SubtitleCue } from './subtitles.js';
 import type { WhisperWord } from './whisper.js';
+import type { AudioStream } from './ffmpeg.js';
 
 export type Decision = 'keep' | 'skip';
 
@@ -31,6 +32,8 @@ export type Session = {
   subtitleOriginalName: string;
   cues: SubtitleCue[];
   cards: Card[];
+  audioStreams?: AudioStream[];
+  audioTrackIndex?: number;
   whisperWords?: WhisperWord[];
   decisions: Record<number, Decision>;
   status: ProcessingStatus;

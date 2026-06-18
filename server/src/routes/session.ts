@@ -109,4 +109,20 @@ export async function sessionRoutes(app: FastifyInstance) {
     persistSession(session);
     return { ok: true, decisions: session.decisions };
   });
+
+  app.post('/session/:sid/audioTrack', async (req, reply) => {
+    const { sid } = req.params as { sid: string };
+    const session = requireSession(sid);
+    const body = req.body as { audioTrackIndex?: number } | undefined;
+    if (!body || typeof body.audioTrackIndex !== 'number') {
+      return reply.code(400).send({ error: 'audioTrackIndex is required' });
+    }
+    const tracks = session.audioStreams ?? [];
+    if (body.audioTrackIndex < 0 || (tracks.length > 0 && body.audioTrackIndex >= tracks.length)) {
+      return reply.code(400).send({ error: 'audioTrackIndex out of range' });
+    }
+    session.audioTrackIndex = body.audioTrackIndex;
+    persistSession(session, { immediate: true });
+    return { ok: true, audioTrackIndex: session.audioTrackIndex };
+  });
 }

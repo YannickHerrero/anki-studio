@@ -16,16 +16,38 @@ export type Decision = 'keep' | 'skip';
 
 const BASE = '/api';
 
-export async function upload(video: File, subtitle: File): Promise<{
+export type AudioStream = {
+  index: number;
+  codec: string;
+  channels: number;
+  language?: string;
+  title?: string;
+  isDefault: boolean;
+};
+
+export type UploadResult = {
   sessionId: string;
   cueCount: number;
-}> {
+  audioStreams: AudioStream[];
+  audioTrackIndex: number | null;
+};
+
+export async function upload(video: File, subtitle: File): Promise<UploadResult> {
   const fd = new FormData();
   fd.append('video', video, video.name);
   fd.append('subtitle', subtitle, subtitle.name);
   const res = await fetch(`${BASE}/upload`, { method: 'POST', body: fd });
   if (!res.ok) throw new Error(`upload failed: ${res.status} ${await res.text()}`);
   return res.json();
+}
+
+export async function setAudioTrack(sid: string, audioTrackIndex: number): Promise<void> {
+  const res = await fetch(`${BASE}/session/${sid}/audioTrack`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ audioTrackIndex }),
+  });
+  if (!res.ok) throw new Error(`set audio track failed: ${res.status}`);
 }
 
 export async function fetchCards(sid: string): Promise<{
