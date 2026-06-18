@@ -16,6 +16,9 @@ export async function mergeRoutes(app: FastifyInstance) {
     if (typeof body.cardIndex !== 'number') {
       return reply.code(400).send({ error: 'cardIndex is required' });
     }
+    if (session.videoRemoved) {
+      return reply.code(409).send({ error: 'video removed — re-link it to merge' });
+    }
 
     const pos = session.cards.findIndex((c) => c.index === body.cardIndex);
     if (pos < 0) return reply.code(404).send({ error: 'card not found' });

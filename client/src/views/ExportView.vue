@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue';
 import { RouterLink } from 'vue-router';
-import { fetchCards, streamSse, saveDecisions } from '../api';
+import { fetchCards, streamSse, saveDecisions, freeSpace } from '../api';
 import { useSessionStore } from '../stores/session';
 import { useSettingsStore } from '../stores/settings';
 
@@ -18,6 +18,9 @@ const stage = ref<'idle' | 'enrich' | 'package' | 'ready'>('idle');
 const downloadUrl = ref<string | null>(null);
 const downloadName = ref<string | null>(null);
 const includeExported = ref(false);
+const videoRemoved = ref(false);
+const freeing = ref(false);
+const freedMsg = ref<string | null>(null);
 
 const exportTargetCount = computed(() =>
   includeExported.value ? session.keptCount : session.pendingExportCount,
@@ -40,10 +43,32 @@ onMounted(async () => {
     const data = await fetchCards(props.sid);
     session.cards = data.cards;
     session.decisions = { ...data.decisions };
+    videoRemoved.value = data.videoRemoved;
   } catch {
     // non-fatal — if the user reloaded right after upload, decisions will catch up
   }
 });
+
+async function doFreeSpace() {
+  if (
+    !confirm(
+      'Delete the source video to free disk space? Your cards stay; retiming or merging ' +
+        'later will require re-linking the video.',
+    )
+  )
+    return;
+  freeing.value = true;
+  try {
+    const { freedBytes } = await freeSpace(props.sid);
+    videoRemoved.value = true;
+    const mb = Math.round(freedBytes / 1_000_000);
+    freedMsg.value = mb > 0 ? `Freed ${mb} MB.` : 'Video removed.';
+  } catch (err) {
+    error.value = err instanceof Error ? err.message : String(err);
+  } finally {
+    freeing.value = false;
+  }
+}
 
 async function exportDeck() {
   if (!canExport.value) return;
@@ -169,6 +194,20 @@ async function exportDeck() {
       </a>
     </div>
 
+    <div class="free">
+      <button
+        v-if="!videoRemoved"
+        type="button"
+        class="ghost"
+        :disabled="freeing"
+        @click="doFreeSpace"
+      >
+        {{ freeing ? 'Freeing…' : 'Free space (delete source video)' }}
+      </button>
+      <span v-else class="muted small">Source video freed. Re-link it from review to retime/merge.</span>
+      <span v-if="freedMsg" class="muted small">· {{ freedMsg }}</span>
+    </div>
+
     <p v-if="error" class="err">{{ error }}</p>
   </section>
 </template>
@@ -268,6 +307,24 @@ input {
 }
 .download {
   margin-top: 12px;
+}
+.free {
+  margin-top: 18px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.free .ghost {
+  background: transparent;
+  border: 1px solid var(--pageLine);
+  padding: 8px 14px;
+  border-radius: 5px;
+  cursor: pointer;
+  color: var(--pageInk);
+}
+.free .ghost:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 .err {
   color: #c83a3a;

@@ -1,8 +1,9 @@
+import fs from 'node:fs/promises';
 import path from 'node:path';
 import type { FastifyInstance } from 'fastify';
 import { createSession, sessionDir } from '../lib/session.js';
 import { downloadVideo, isValidYouTubeUrl, probe, validateYtDlp } from '../lib/ytdlp.js';
-import { extractFullAudio } from '../lib/ffmpeg.js';
+import { extractFullAudio, probeDurationMs } from '../lib/ffmpeg.js';
 import { persistSession } from '../lib/persistence.js';
 
 type YouTubeBody = {
@@ -57,6 +58,18 @@ export async function youtubeRoutes(app: FastifyInstance) {
       });
       session.videoPath = videoPath;
       session.videoOriginalName = path.basename(videoPath);
+
+      // Fingerprint the downloaded file so a later re-download can be verified.
+      try {
+        const [stat, durationMs] = await Promise.all([
+          fs.stat(videoPath),
+          probeDurationMs(videoPath),
+        ]);
+        session.videoSize = stat.size;
+        session.videoDurationMs = durationMs || meta.durationMs;
+      } catch {
+        session.videoDurationMs = meta.durationMs;
+      }
 
       // Extract full audio for Whisper.
       write('audio', { stage: 'extracting' });

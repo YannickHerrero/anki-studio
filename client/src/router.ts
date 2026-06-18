@@ -7,6 +7,7 @@ export const router = createRouter({
     { path: '/upload', name: 'upload', component: () => import('./views/UploadView.vue') },
     { path: '/youtube', name: 'youtube', component: () => import('./views/YouTubeView.vue') },
     { path: '/sessions', name: 'sessions', component: () => import('./views/SessionsView.vue') },
+    { path: '/known', name: 'known', component: () => import('./views/KnownWordsView.vue') },
     { path: '/settings', name: 'settings', component: () => import('./views/SettingsView.vue') },
     {
       path: '/session/:sid/processing',

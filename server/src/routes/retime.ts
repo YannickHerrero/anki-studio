@@ -23,6 +23,9 @@ export async function retimeRoutes(app: FastifyInstance) {
     if (!Number.isFinite(delta) || delta === 0) {
       return reply.code(400).send({ error: 'deltaMs must be a non-zero number' });
     }
+    if (session.videoRemoved) {
+      return reply.code(409).send({ error: 'video removed — re-link it to retime' });
+    }
 
     const from = Math.max(0, Math.floor(body.fromIndex ?? 0));
     const affected = session.cards.slice(from);

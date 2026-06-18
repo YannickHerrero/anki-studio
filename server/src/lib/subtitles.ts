@@ -9,13 +9,33 @@ export type SubtitleCue = {
   endMs: number;
   text: string;
   translation?: string;
+  /** Freeform learner note, shown on the card back and editable in review. */
+  note?: string;
 };
 
 const HTML_TAG_RE = /<[^>]+>/g;
 const WHITESPACE_RE = /\s+/g;
 
+// Music note glyphs commonly used to mark song/lyric lines in subtitles.
+const MUSIC_PREFIX_RE = /^[♪♫♬♩🎵🎶#＃]/u;
+// A line that is entirely a parenthetical, e.g. "(crowd noise)" or "（ざわめき）".
+const FULLY_PARENTHESIZED_RE = /^[（(][^（()）]*[）)]$/u;
+
 function cleanText(raw: string): string {
   return raw.replace(HTML_TAG_RE, '').replace(WHITESPACE_RE, ' ').trim();
+}
+
+/**
+ * Lines that are never worth studying: song/lyric lines marked with a music note
+ * and pure sound-effect / stage-direction lines wrapped entirely in parentheses
+ * (e.g. opening themes, "(crowd making noise)", "（ため息）").
+ */
+export function isNonStudyLine(text: string): boolean {
+  const t = text.trim();
+  if (!t) return true;
+  if (MUSIC_PREFIX_RE.test(t)) return true;
+  if (FULLY_PARENTHESIZED_RE.test(t)) return true;
+  return false;
 }
 
 export async function parseSubtitleFile(filePath: string): Promise<SubtitleCue[]> {
@@ -29,7 +49,7 @@ export async function parseSubtitleFile(filePath: string): Promise<SubtitleCue[]
     let idx = 0;
     for (const c of parseAss(raw)) {
       const text = cleanText(c.text);
-      if (!text) continue;
+      if (!text || isNonStudyLine(text)) continue;
       cues.push({ index: idx++, startMs: c.startMs, endMs: c.endMs, text });
     }
     return cues;
@@ -45,7 +65,7 @@ export async function parseSubtitleFile(filePath: string): Promise<SubtitleCue[]
     if (endMs <= startMs) continue;
 
     const text = cleanText(cap.text ?? '');
-    if (!text) continue;
+    if (!text || isNonStudyLine(text)) continue;
 
     cues.push({ index: idx++, startMs, endMs, text });
   }

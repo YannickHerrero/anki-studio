@@ -12,7 +12,14 @@ type Stored = {
   openrouterKey?: string;
   openaiKey?: string;
   model?: string;
+  ankiConnectUrl?: string;
+  knownDecks?: string[];
+  wordField?: string;
+  knownThresholdDays?: number;
+  underlineByStatus?: boolean;
 };
+
+export const DEFAULT_ANKICONNECT_URL = 'http://127.0.0.1:8765';
 
 function load(): Stored {
   try {
@@ -29,6 +36,11 @@ export const useSettingsStore = defineStore('settings', () => {
   const openrouterKey = ref(initial.openrouterKey ?? '');
   const openaiKey = ref(initial.openaiKey ?? '');
   const model = ref(initial.model ?? MODEL_PRESETS[0].id);
+  const ankiConnectUrl = ref(initial.ankiConnectUrl ?? DEFAULT_ANKICONNECT_URL);
+  const knownDecks = ref<string[]>(initial.knownDecks ?? []);
+  const wordField = ref(initial.wordField ?? '');
+  const knownThresholdDays = ref(initial.knownThresholdDays ?? 10);
+  const underlineByStatus = ref(initial.underlineByStatus ?? true);
 
   const isConfigured = computed(() => openrouterKey.value.trim().length > 0);
   const isYoutubeReady = computed(
@@ -36,15 +48,44 @@ export const useSettingsStore = defineStore('settings', () => {
   );
 
   watch(
-    [openrouterKey, openaiKey, model],
-    ([orKey, oaKey, m]) => {
+    [
+      openrouterKey,
+      openaiKey,
+      model,
+      ankiConnectUrl,
+      knownDecks,
+      wordField,
+      knownThresholdDays,
+      underlineByStatus,
+    ],
+    () => {
       localStorage.setItem(
         STORAGE_KEY,
-        JSON.stringify({ openrouterKey: orKey, openaiKey: oaKey, model: m }),
+        JSON.stringify({
+          openrouterKey: openrouterKey.value,
+          openaiKey: openaiKey.value,
+          model: model.value,
+          ankiConnectUrl: ankiConnectUrl.value,
+          knownDecks: knownDecks.value,
+          wordField: wordField.value,
+          knownThresholdDays: knownThresholdDays.value,
+          underlineByStatus: underlineByStatus.value,
+        }),
       );
     },
     { deep: true },
   );
 
-  return { openrouterKey, openaiKey, model, isConfigured, isYoutubeReady };
+  return {
+    openrouterKey,
+    openaiKey,
+    model,
+    ankiConnectUrl,
+    knownDecks,
+    wordField,
+    knownThresholdDays,
+    underlineByStatus,
+    isConfigured,
+    isYoutubeReady,
+  };
 });

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted, computed } from 'vue';
 import { RouterLink } from 'vue-router';
+import { freeSpace } from '../api';
 
 type SessionSummary = {
   id: string;
@@ -15,12 +16,14 @@ type SessionSummary = {
   keptCount: number;
   skippedCount: number;
   hasExport: boolean;
+  videoRemoved: boolean;
 };
 
 const sessions = ref<SessionSummary[]>([]);
 const loading = ref(true);
 const error = ref<string | null>(null);
 const deleting = ref<string | null>(null);
+const freeing = ref<string | null>(null);
 
 async function load() {
   loading.value = true;
@@ -48,6 +51,27 @@ async function remove(s: SessionSummary) {
     alert(err instanceof Error ? err.message : String(err));
   } finally {
     deleting.value = null;
+  }
+}
+
+async function free(s: SessionSummary) {
+  if (
+    !confirm(
+      `Free space for "${s.title}"? This deletes the source video. ` +
+        'Your cards stay, but retiming/merging needs you to re-link the video later.',
+    )
+  )
+    return;
+  freeing.value = s.id;
+  try {
+    const { freedBytes } = await freeSpace(s.id);
+    s.videoRemoved = true;
+    const mb = Math.round(freedBytes / 1_000_000);
+    if (mb > 0) alert(`Freed ${mb} MB.`);
+  } catch (err) {
+    alert(err instanceof Error ? err.message : String(err));
+  } finally {
+    freeing.value = null;
   }
 }
 
@@ -98,6 +122,7 @@ onMounted(load);
             <span class="danger">{{ s.skippedCount }} skip</span>
             <span>{{ progress(s) }}% reviewed</span>
             <span class="muted">· {{ relativeTime(s.updatedAt) }}</span>
+            <span v-if="s.videoRemoved" class="muted">· video freed</span>
             <span v-if="s.status === 'error'" class="danger">· {{ s.errorMessage ?? 'error' }}</span>
             <span v-else-if="s.status !== 'ready' && s.totalCards === 0" class="muted">
               · {{ s.status }}
@@ -119,6 +144,15 @@ onMounted(load);
           >
             Export
           </RouterLink>
+          <button
+            v-if="!s.videoRemoved && s.totalCards > 0"
+            type="button"
+            class="ghost"
+            :disabled="freeing === s.id"
+            @click="free(s)"
+          >
+            {{ freeing === s.id ? '…' : 'Free space' }}
+          </button>
           <button
             type="button"
             class="ghost danger"

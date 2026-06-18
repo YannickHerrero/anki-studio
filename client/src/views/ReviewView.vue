@@ -2,19 +2,29 @@
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import {
+  fetchAnalysis,
   fetchCards,
   mediaUrl,
   mergeWithPrevious,
+  relinkVideo,
+  relinkYoutube,
   saveDecisions,
   streamSse,
+  updateCard,
+  type CardAnalysis,
   type CardSummary,
   type Decision,
+  type EditProposal,
 } from '../api';
 import { useSessionStore } from '../stores/session';
+import { useSettingsStore } from '../stores/settings';
+import ChatPanel from '../components/ChatPanel.vue';
+import MenuDropdown from '../components/MenuDropdown.vue';
 
 const props = defineProps<{ sid: string }>();
 const router = useRouter();
 const session = useSessionStore();
+const settings = useSettingsStore();
 
 const index = ref(0);
 const loading = ref(true);
@@ -28,14 +38,58 @@ const retimeDone = ref(0);
 const retimeTotal = ref(0);
 const retimeError = ref<string | null>(null);
 
+const showChat = ref(false);
 const merging = ref(false);
 const mergeError = ref<string | null>(null);
 const canMerge = computed(() => index.value > 0 && !!current.value && !merging.value);
+
+const source = ref<'upload' | 'youtube'>('upload');
+const videoRemoved = ref(false);
+const showRelink = ref(false);
+const relinking = ref(false);
+const relinkProgress = ref(0);
+const relinkError = ref<string | null>(null);
+const relinkMismatch = ref(false);
+const fileInput = ref<HTMLInputElement | null>(null);
 
 const current = computed<CardSummary | undefined>(() => session.cards[index.value]);
 const currentDecision = computed<Decision | undefined>(() =>
   current.value ? session.decisions[current.value.index] : undefined,
 );
+
+const analysis = ref<Record<number, CardAnalysis>>({});
+const currentAnalysis = computed<CardAnalysis | undefined>(() =>
+  current.value ? analysis.value[current.value.index] : undefined,
+);
+// Only highlight once there's a known-words list to compare against.
+const hasKnownData = computed(() =>
+  Object.values(analysis.value).some(
+    (a) => a.knownCount + a.learningCount + a.createdCount > 0,
+  ),
+);
+
+async function loadAnalysis() {
+  try {
+    analysis.value = await fetchAnalysis(props.sid);
+  } catch {
+    // analysis is a nice-to-have; ignore if the tokenizer/known list isn't ready
+  }
+}
+
+function autoSkipKnown() {
+  let skipped = 0;
+  for (const card of session.cards) {
+    const a = analysis.value[card.index];
+    if (a && a.newCount === 0 && session.decisions[card.index] !== 'skip') {
+      session.decisions[card.index] = 'skip';
+      skipped++;
+    }
+  }
+  if (skipped > 0) {
+    scheduleSave();
+    next();
+  }
+}
 
 let saveTimer: ReturnType<typeof setTimeout> | null = null;
 function scheduleSave() {
@@ -43,6 +97,20 @@ function scheduleSave() {
   saveTimer = setTimeout(() => {
     void saveDecisions(props.sid, session.decisions);
   }, 400);
+}
+
+const noteDraft = ref('');
+let noteTimer: ReturnType<typeof setTimeout> | null = null;
+
+function scheduleNoteSave() {
+  const card = current.value;
+  if (!card) return;
+  if (noteTimer) clearTimeout(noteTimer);
+  const value = noteDraft.value;
+  noteTimer = setTimeout(() => {
+    card.note = value;
+    void updateCard(props.sid, card.index, { note: value });
+  }, 500);
 }
 
 function decide(d: Decision) {
@@ -83,6 +151,10 @@ function onKey(e: KeyboardEvent) {
 
 async function mergePrev() {
   if (!canMerge.value || !current.value) return;
+  if (videoRemoved.value) {
+    promptRelink();
+    return;
+  }
   merging.value = true;
   mergeError.value = null;
   try {
@@ -147,6 +219,15 @@ watch(index, () => {
   }
 });
 
+watch(
+  current,
+  (card) => {
+    if (noteTimer) clearTimeout(noteTimer);
+    noteDraft.value = card?.note ?? '';
+  },
+  { immediate: true },
+);
+
 onMounted(async () => {
   window.addEventListener('keydown', onKey);
   session.sessionId = props.sid;
@@ -154,6 +235,9 @@ onMounted(async () => {
     const data = await fetchCards(props.sid);
     session.cards = data.cards;
     session.decisions = { ...data.decisions };
+    source.value = data.source;
+    videoRemoved.value = data.videoRemoved;
+    void loadAnalysis();
     // jump to first undecided
     const firstUndecided = data.cards.findIndex((c) => !data.decisions[c.index]);
     if (firstUndecided >= 0) index.value = firstUndecided;
@@ -167,7 +251,80 @@ onMounted(async () => {
 onUnmounted(() => {
   window.removeEventListener('keydown', onKey);
   if (saveTimer) clearTimeout(saveTimer);
+  if (noteTimer) clearTimeout(noteTimer);
 });
+
+function toggleRetime() {
+  if (videoRemoved.value) {
+    promptRelink();
+    return;
+  }
+  showRetime.value = !showRetime.value;
+}
+
+function promptRelink() {
+  showRetime.value = false;
+  relinkError.value = null;
+  relinkMismatch.value = false;
+  showRelink.value = true;
+}
+
+function chooseFile() {
+  fileInput.value?.click();
+}
+
+async function onFilePicked(e: Event) {
+  const file = (e.target as HTMLInputElement).files?.[0];
+  if (!file) return;
+  relinking.value = true;
+  relinkError.value = null;
+  try {
+    const res = await relinkVideo(props.sid, file);
+    videoRemoved.value = false;
+    relinkMismatch.value = res.mismatch;
+    if (!res.mismatch) showRelink.value = false;
+  } catch (err) {
+    relinkError.value = err instanceof Error ? err.message : String(err);
+  } finally {
+    relinking.value = false;
+    if (fileInput.value) fileInput.value.value = '';
+  }
+}
+
+async function relinkFromYoutube() {
+  relinking.value = true;
+  relinkError.value = null;
+  relinkProgress.value = 0;
+  try {
+    await relinkYoutube(props.sid, ({ event, data }) => {
+      const d = data as { pct?: number; mismatch?: boolean; message?: string };
+      if (event === 'download') relinkProgress.value = d.pct ?? 0;
+      else if (event === 'done') {
+        videoRemoved.value = false;
+        relinkMismatch.value = !!d.mismatch;
+      } else if (event === 'error') relinkError.value = d.message ?? 're-link failed';
+    });
+    if (!relinkError.value && !relinkMismatch.value) showRelink.value = false;
+  } catch (err) {
+    relinkError.value = err instanceof Error ? err.message : String(err);
+  } finally {
+    relinking.value = false;
+  }
+}
+
+async function applyEdit(edit: EditProposal) {
+  const card = current.value;
+  if (!card) return;
+  try {
+    const updated = await updateCard(props.sid, card.index, edit);
+    card.text = updated.text;
+    card.translation = updated.translation;
+    card.note = updated.note;
+    noteDraft.value = updated.note ?? '';
+  } catch (err) {
+    error.value = err instanceof Error ? err.message : String(err);
+  }
+}
 
 function goExport() {
   router.push({ name: 'export', params: { sid: props.sid } });
@@ -175,23 +332,79 @@ function goExport() {
 </script>
 
 <template>
-  <section class="review">
+  <section class="review" :class="{ 'review--wide': showChat }">
     <header class="review__header">
-      <div class="counts">
-        <span class="counts__item counts__item--kept">{{ session.keptCount }} keep</span>
-        <span class="counts__item counts__item--skipped">{{ session.skippedCount }} skip</span>
-        <span class="counts__item">{{ session.remainingCount }} left</span>
+      <div class="status-cluster">
+        <div class="counts">
+          <span class="counts__seg counts__seg--kept"><b>{{ session.keptCount }}</b> keep</span>
+          <span class="counts__seg counts__seg--skipped"><b>{{ session.skippedCount }}</b> skip</span>
+          <span class="counts__seg"><b>{{ session.remainingCount }}</b> left</span>
+        </div>
+        <span
+          v-if="currentAnalysis && hasKnownData"
+          class="newchip"
+          :class="currentAnalysis.newCount === 0 ? 'newchip--allknown' : 'newchip--new'"
+        >
+          {{ currentAnalysis.newCount === 0 ? 'all known' : `${currentAnalysis.newCount} new` }}
+        </span>
       </div>
       <div class="position">{{ index + 1 }} / {{ session.cards.length }}</div>
       <div class="header-actions">
-        <button class="ghost" :disabled="!canMerge" @click="mergePrev">
-          {{ merging ? 'Merging…' : 'Merge with previous' }}
+        <button class="ghost" :class="{ active: showChat }" @click="showChat = !showChat">
+          Chat
         </button>
-        <button class="ghost" @click="showRetime = !showRetime">Retime</button>
+        <MenuDropdown label="Tools">
+          <button :disabled="!canMerge" @click="mergePrev">
+            {{ merging ? 'Merging…' : 'Merge with previous' }}
+          </button>
+          <button @click="toggleRetime">Retime</button>
+          <button v-if="hasKnownData" @click="autoSkipKnown">Skip known cards</button>
+          <button
+            v-if="hasKnownData"
+            @click="settings.underlineByStatus = !settings.underlineByStatus"
+          >
+            {{ settings.underlineByStatus ? '✓ ' : '' }}Underline by status
+          </button>
+        </MenuDropdown>
         <button class="ghost" @click="goExport">Done — Export</button>
       </div>
     </header>
     <p v-if="mergeError" class="err">{{ mergeError }}</p>
+
+    <div v-if="showRelink" class="retime">
+      <input
+        ref="fileInput"
+        type="file"
+        accept="video/*,.mkv"
+        style="display: none"
+        @change="onFilePicked"
+      />
+      <div class="retime__row">
+        <span class="retime__label">Re-link</span>
+        <span class="retime__hint">
+          Retiming and merging re-cut from the source video, which was freed. Re-link it to continue.
+        </span>
+      </div>
+      <div class="retime__row">
+        <button
+          v-if="source === 'youtube'"
+          class="primary"
+          :disabled="relinking"
+          @click="relinkFromYoutube"
+        >
+          {{ relinking ? `Downloading ${relinkProgress}%…` : 'Re-download from YouTube' }}
+        </button>
+        <button v-else class="primary" :disabled="relinking" @click="chooseFile">
+          {{ relinking ? 'Linking…' : 'Choose video file…' }}
+        </button>
+        <button class="ghost" :disabled="relinking" @click="showRelink = false">Cancel</button>
+      </div>
+      <div v-if="relinkMismatch" class="retime__hint" style="color: #c83a3a">
+        Warning: this file's duration differs from the original — re-cuts may be misaligned.
+        It's been linked anyway; use only if you're sure it's the same video.
+      </div>
+      <div v-if="relinkError" class="err">{{ relinkError }}</div>
+    </div>
 
     <div v-if="showRetime" class="retime">
       <div class="retime__row">
@@ -228,6 +441,8 @@ function goExport() {
       <div v-if="retimeError" class="err">{{ retimeError }}</div>
     </div>
 
+    <div class="review__main" :class="{ 'review__main--chat': showChat }">
+    <div class="review__col">
     <p v-if="loading" class="muted">Loading…</p>
     <p v-else-if="error" class="err">{{ error }}</p>
     <p v-else-if="!current" class="muted">No cards.</p>
@@ -240,7 +455,17 @@ function goExport() {
         <div class="rule">
           <span class="rule__bar"></span><span class="rule__label">Sentence</span>
         </div>
-        <p class="sentence">{{ current.text }}</p>
+        <p class="sentence">
+          <template v-if="currentAnalysis && hasKnownData && settings.underlineByStatus">
+            <span
+              v-for="(tok, i) in currentAnalysis.tokens"
+              :key="i"
+              :class="tok.s ? `tok tok--${tok.s}` : undefined"
+              >{{ tok.t }}</span
+            >
+          </template>
+          <template v-else>{{ current.text }}</template>
+        </p>
         <p v-if="current.translation" class="translation">{{ current.translation }}</p>
         <audio
           v-if="current.audioReady"
@@ -251,6 +476,17 @@ function goExport() {
         />
         <p v-else class="muted">audio not ready</p>
 
+        <div class="rule">
+          <span class="rule__bar"></span><span class="rule__label">Note</span>
+        </div>
+        <textarea
+          v-model="noteDraft"
+          class="note"
+          rows="2"
+          placeholder="Add a note for this card (saved to Anki)…"
+          @input="scheduleNoteSave"
+        ></textarea>
+
         <div
           v-if="currentDecision"
           class="state"
@@ -260,12 +496,40 @@ function goExport() {
         </div>
       </div>
     </article>
+    </div>
+    <div v-if="showChat && current" class="review__chat">
+      <ChatPanel :sid="sid" :card="current" @apply="applyEdit" />
+    </div>
+    </div>
   </section>
 </template>
 
 <style scoped>
 .review {
   max-width: 720px;
+}
+.review--wide {
+  max-width: 1140px;
+}
+.review__main {
+  display: flex;
+  gap: 18px;
+  align-items: flex-start;
+}
+.review__col {
+  flex: 1;
+  min-width: 0;
+}
+.review__chat {
+  width: 380px;
+  flex-shrink: 0;
+  height: min(72vh, 680px);
+  position: sticky;
+  top: 16px;
+}
+button.ghost.active {
+  border-color: var(--accent);
+  color: var(--accent);
 }
 .review__header {
   display: flex;
@@ -335,25 +599,59 @@ function goExport() {
   opacity: 0.5;
   cursor: not-allowed;
 }
-.counts {
+.status-cluster {
   display: flex;
-  gap: 10px;
-  font-size: 11px;
-  letter-spacing: 0.18em;
-  text-transform: uppercase;
+  align-items: center;
+  gap: 8px;
 }
-.counts__item {
-  padding: 4px 9px;
+.counts {
+  display: inline-flex;
+  align-items: stretch;
   border: 1px solid var(--pageLine);
   border-radius: 999px;
+  overflow: hidden;
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+.counts__seg {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 12px;
   color: var(--pageMuted);
 }
-.counts__item--kept {
-  color: var(--accent);
-  border-color: var(--accent);
+.counts__seg + .counts__seg {
+  border-left: 1px solid var(--pageLine);
 }
-.counts__item--skipped {
+.counts__seg b {
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  letter-spacing: 0;
+}
+.counts__seg--kept,
+.counts__seg--kept b {
+  color: var(--accent);
+}
+.counts__seg--skipped,
+.counts__seg--skipped b {
   color: #c83a3a;
+}
+.newchip {
+  padding: 5px 11px;
+  border: 1px solid var(--pageLine);
+  border-radius: 999px;
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--pageMuted);
+}
+.newchip--new {
+  color: #c8902a;
+  border-color: #c8902a;
+}
+.newchip--allknown {
+  color: var(--pageMuted);
 }
 .position {
   font-family: ui-monospace, monospace;
@@ -424,6 +722,24 @@ button.ghost {
   color: var(--bInk);
   margin: 0;
 }
+/* Underline content words by status; known words are left unmarked. */
+.tok {
+  text-decoration-line: underline;
+  text-decoration-thickness: 2px;
+  text-underline-offset: 4px;
+}
+.tok--known {
+  text-decoration-line: none;
+}
+.tok--learning {
+  text-decoration-color: #e0922a;
+}
+.tok--created {
+  text-decoration-color: #9aa0a6;
+}
+.tok--new {
+  text-decoration-color: #d64545;
+}
 .translation {
   font-size: 15px;
   line-height: 1.55;
@@ -431,6 +747,18 @@ button.ghost {
   margin: 0;
   border-left: 2px solid var(--accent);
   padding-left: 10px;
+}
+.note {
+  width: 100%;
+  background: var(--bPanel);
+  border: 1px solid var(--bLine);
+  border-radius: 5px;
+  padding: 8px 10px;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--bInk);
+  font-family: inherit;
+  resize: vertical;
 }
 audio {
   width: 100%;

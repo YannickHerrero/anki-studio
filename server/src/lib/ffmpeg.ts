@@ -56,6 +56,17 @@ export async function probeAudioStreams(videoPath: string): Promise<AudioStream[
   }));
 }
 
+export async function probeDurationMs(videoPath: string): Promise<number> {
+  const { stdout } = await execa(config.ffprobePath, [
+    '-v', 'error',
+    '-show_entries', 'format=duration',
+    '-of', 'default=nokey=1:noprint_wrappers=1',
+    videoPath,
+  ]);
+  const seconds = Number(stdout.trim());
+  return Number.isFinite(seconds) && seconds > 0 ? Math.round(seconds * 1000) : 0;
+}
+
 function msToSeconds(ms: number): string {
   return (Math.max(0, ms) / 1000).toFixed(3);
 }

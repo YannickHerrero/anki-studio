@@ -28,6 +28,7 @@ function summarize(s: ReturnType<typeof allSessions>[number]) {
     exportedCount: exported,
     pendingExportCount: kept - exported,
     hasExport: !!s.lastApkgPath,
+    videoRemoved: !!s.videoRemoved,
   };
 }
 
@@ -72,10 +73,12 @@ export async function sessionRoutes(app: FastifyInstance) {
 
     return {
       source: session.source,
+      videoRemoved: !!session.videoRemoved,
       cards: session.cards.map((c) => ({
         index: c.index,
         text: c.text,
         translation: c.translation,
+        note: c.note,
         startMs: c.startMs,
         endMs: c.endMs,
         audioUrl: `/session/${sid}/media/audio/${c.index}?r=${c.rev}`,

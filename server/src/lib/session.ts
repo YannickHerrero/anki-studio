@@ -28,6 +28,12 @@ export type Session = {
   youtubeUrl?: string;
   videoPath: string;
   videoOriginalName: string;
+  /** Duration of the source video in ms, captured at ingest — used to verify a re-linked file. */
+  videoDurationMs?: number;
+  /** Byte size of the source video, captured at ingest. */
+  videoSize?: number;
+  /** True once the source video has been deleted to free disk space. */
+  videoRemoved?: boolean;
   subtitlePath: string;
   subtitleOriginalName: string;
   cues: SubtitleCue[];

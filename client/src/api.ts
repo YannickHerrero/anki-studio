@@ -2,6 +2,7 @@ export type CardSummary = {
   index: number;
   text: string;
   translation?: string;
+  note?: string;
   startMs: number;
   endMs: number;
   audioUrl: string;
@@ -52,12 +53,39 @@ export async function setAudioTrack(sid: string, audioTrackIndex: number): Promi
 }
 
 export async function fetchCards(sid: string): Promise<{
+  source: 'upload' | 'youtube';
+  videoRemoved: boolean;
   cards: CardSummary[];
   decisions: Record<number, Decision>;
 }> {
   const res = await fetch(`${BASE}/session/${sid}/cards`);
   if (!res.ok) throw new Error(`fetchCards: ${res.status}`);
   return res.json();
+}
+
+export async function freeSpace(sid: string): Promise<{ freedBytes: number }> {
+  const res = await fetch(`${BASE}/session/${sid}/free-space`, { method: 'POST' });
+  if (!res.ok) throw new Error(`freeSpace failed: ${res.status} ${await res.text()}`);
+  return res.json();
+}
+
+export type RelinkResult = {
+  ok: boolean;
+  mismatch: boolean;
+  expectedDurationMs: number | null;
+  actualDurationMs: number;
+};
+
+export async function relinkVideo(sid: string, file: File): Promise<RelinkResult> {
+  const fd = new FormData();
+  fd.append('video', file, file.name);
+  const res = await fetch(`${BASE}/session/${sid}/relink`, { method: 'POST', body: fd });
+  if (!res.ok) throw new Error(`relink failed: ${res.status} ${await res.text()}`);
+  return res.json();
+}
+
+export async function relinkYoutube(sid: string, onEvent: SseHandler): Promise<void> {
+  await streamSse(`/session/${sid}/relink-youtube`, { method: 'POST' }, onEvent);
 }
 
 export async function saveDecisions(
@@ -69,6 +97,27 @@ export async function saveDecisions(
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ decisions }),
   });
+}
+
+export type CardEdit = {
+  text?: string;
+  translation?: string;
+  note?: string;
+};
+
+export async function updateCard(
+  sid: string,
+  index: number,
+  edit: CardEdit,
+): Promise<{ index: number; text: string; translation?: string; note?: string }> {
+  const res = await fetch(`${BASE}/session/${sid}/card/${index}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(edit),
+  });
+  if (!res.ok) throw new Error(`updateCard failed: ${res.status} ${await res.text()}`);
+  const data = await res.json();
+  return data.card;
 }
 
 export function mediaUrl(path: string): string {
@@ -85,6 +134,138 @@ export async function mergeWithPrevious(
     body: JSON.stringify({ cardIndex }),
   });
   if (!res.ok) throw new Error(`merge failed: ${res.status} ${await res.text()}`);
+  return res.json();
+}
+
+export type ChatMessage = { role: 'user' | 'assistant'; content: string };
+
+export type EditProposal = {
+  text?: string;
+  translation?: string;
+  note?: string;
+};
+
+export async function streamChat(
+  sid: string,
+  payload: {
+    index: number;
+    messages: ChatMessage[];
+    openrouterKey: string;
+    model: string;
+  },
+  onEvent: SseHandler,
+): Promise<void> {
+  await streamSse(
+    `/session/${sid}/chat`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    },
+    onEvent,
+  );
+}
+
+export type WordStatus = 'known' | 'learning' | 'created';
+export type TokenStatus = WordStatus | 'new';
+
+export type CardAnalysis = {
+  newCount: number;
+  learningCount: number;
+  knownCount: number;
+  createdCount: number;
+  tokens: Array<{ t: string; s?: TokenStatus }>;
+};
+
+export async function fetchAnalysis(sid: string): Promise<Record<number, CardAnalysis>> {
+  const res = await fetch(`${BASE}/session/${sid}/analysis`);
+  if (!res.ok) throw new Error(`fetchAnalysis: ${res.status}`);
+  const data = await res.json();
+  return data.words as Record<number, CardAnalysis>;
+}
+
+export type KnownSummary = {
+  total: number;
+  known: number;
+  learning: number;
+  created: number;
+  updatedAt: number;
+  source?: string;
+};
+
+export async function fetchKnownSummary(): Promise<KnownSummary> {
+  const res = await fetch(`${BASE}/known`);
+  if (!res.ok) throw new Error(`fetchKnownSummary: ${res.status}`);
+  return res.json();
+}
+
+export type KnownWord = {
+  word: string;
+  status: WordStatus;
+  reading: string;
+  intervalDays: number;
+};
+
+export async function fetchKnownWords(): Promise<KnownWord[]> {
+  const res = await fetch(`${BASE}/known/words`);
+  if (!res.ok) throw new Error(`fetchKnownWords: ${res.status}`);
+  const data = await res.json();
+  return data.words as KnownWord[];
+}
+
+export type KnownSnapshot = {
+  date: string;
+  known: number;
+  learning: number;
+  created: number;
+  total: number;
+};
+
+export async function fetchKnownHistory(): Promise<KnownSnapshot[]> {
+  const res = await fetch(`${BASE}/known/history`);
+  if (!res.ok) throw new Error(`fetchKnownHistory: ${res.status}`);
+  const data = await res.json();
+  return data.history as KnownSnapshot[];
+}
+
+export async function fetchAnkiDecks(url?: string): Promise<string[]> {
+  const q = url ? `?url=${encodeURIComponent(url)}` : '';
+  const res = await fetch(`${BASE}/known/decks${q}`);
+  if (!res.ok) throw new Error(`fetchAnkiDecks failed: ${res.status} ${await res.text()}`);
+  const data = await res.json();
+  return data.decks as string[];
+}
+
+export type SyncKnownPayload = {
+  decks: string[];
+  field: string;
+  knownThresholdDays?: number;
+  url?: string;
+};
+
+export async function syncKnown(payload: SyncKnownPayload): Promise<KnownSummary> {
+  const res = await fetch(`${BASE}/known/sync`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) throw new Error(`syncKnown failed: ${res.status} ${await res.text()}`);
+  return res.json();
+}
+
+export async function importKnown(text: string): Promise<KnownSummary> {
+  const res = await fetch(`${BASE}/known/import`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ text }),
+  });
+  if (!res.ok) throw new Error(`importKnown failed: ${res.status} ${await res.text()}`);
+  return res.json();
+}
+
+export async function clearKnown(): Promise<KnownSummary> {
+  const res = await fetch(`${BASE}/known`, { method: 'DELETE' });
+  if (!res.ok) throw new Error(`clearKnown failed: ${res.status}`);
   return res.json();
 }
 
