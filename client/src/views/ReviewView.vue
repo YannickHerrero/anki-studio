@@ -334,14 +334,16 @@ function goExport() {
 <template>
   <section class="review" :class="{ 'review--wide': showChat }">
     <header class="review__header">
-      <div class="counts">
-        <span class="counts__item counts__item--kept">{{ session.keptCount }} keep</span>
-        <span class="counts__item counts__item--skipped">{{ session.skippedCount }} skip</span>
-        <span class="counts__item">{{ session.remainingCount }} left</span>
+      <div class="status-cluster">
+        <div class="counts">
+          <span class="counts__seg counts__seg--kept"><b>{{ session.keptCount }}</b> keep</span>
+          <span class="counts__seg counts__seg--skipped"><b>{{ session.skippedCount }}</b> skip</span>
+          <span class="counts__seg"><b>{{ session.remainingCount }}</b> left</span>
+        </div>
         <span
           v-if="currentAnalysis && hasKnownData"
-          class="counts__item"
-          :class="currentAnalysis.newCount === 0 ? 'counts__item--allknown' : 'counts__item--new'"
+          class="newchip"
+          :class="currentAnalysis.newCount === 0 ? 'newchip--allknown' : 'newchip--new'"
         >
           {{ currentAnalysis.newCount === 0 ? 'all known' : `${currentAnalysis.newCount} new` }}
         </span>
@@ -597,31 +599,58 @@ button.ghost.active {
   opacity: 0.5;
   cursor: not-allowed;
 }
-.counts {
+.status-cluster {
   display: flex;
-  gap: 10px;
-  font-size: 11px;
-  letter-spacing: 0.18em;
-  text-transform: uppercase;
+  align-items: center;
+  gap: 8px;
 }
-.counts__item {
-  padding: 4px 9px;
+.counts {
+  display: inline-flex;
+  align-items: stretch;
   border: 1px solid var(--pageLine);
   border-radius: 999px;
+  overflow: hidden;
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+.counts__seg {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 12px;
   color: var(--pageMuted);
 }
-.counts__item--kept {
-  color: var(--accent);
-  border-color: var(--accent);
+.counts__seg + .counts__seg {
+  border-left: 1px solid var(--pageLine);
 }
-.counts__item--skipped {
+.counts__seg b {
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  letter-spacing: 0;
+}
+.counts__seg--kept,
+.counts__seg--kept b {
+  color: var(--accent);
+}
+.counts__seg--skipped,
+.counts__seg--skipped b {
   color: #c83a3a;
 }
-.counts__item--new {
+.newchip {
+  padding: 5px 11px;
+  border: 1px solid var(--pageLine);
+  border-radius: 999px;
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--pageMuted);
+}
+.newchip--new {
   color: #c8902a;
   border-color: #c8902a;
 }
-.counts__item--allknown {
+.newchip--allknown {
   color: var(--pageMuted);
 }
 .position {
