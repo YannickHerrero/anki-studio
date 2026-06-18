@@ -26,10 +26,10 @@ import { rehydrateSessions } from './lib/persistence.js';
 async function main() {
   await fs.mkdir(config.tmpDir, { recursive: true });
 
-  const loaded = await rehydrateSessions();
+  const { loaded, wiped } = await rehydrateSessions();
 
   const app = Fastify({ logger: true });
-  app.log.info({ loaded }, 'rehydrated sessions from disk');
+  app.log.info({ loaded, wiped }, 'rehydrated sessions from disk');
 
   await app.register(cors, { origin: true });
   await app.register(multipart, {
