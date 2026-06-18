@@ -26,11 +26,18 @@ function describeFetchError(err: unknown): string {
   return String(err);
 }
 
+type WhisperWord = {
+  word: string;
+  start: number;
+  end: number;
+};
+
 type WhisperSegment = {
   id: number;
   start: number;
   end: number;
   text: string;
+  words?: WhisperWord[];
 };
 
 type VerboseJson = {
@@ -38,18 +45,84 @@ type VerboseJson = {
   duration?: number;
   text?: string;
   segments?: WhisperSegment[];
+  words?: WhisperWord[];
 };
 
 export type TranscribeOptions = {
   apiKey: string;
   audioPath: string;
   language?: string;
+  /** Minimum word-gap (ms) treated as a sentence boundary. Default 400. */
+  pauseThresholdMs?: number;
 };
 
 const WHISPER_URL = 'https://api.openai.com/v1/audio/transcriptions';
 
+const SENTENCE_END_RE = /[。！？．!?]$/;
+
 function cleanSegment(text: string): string {
   return text.replace(/\s+/g, ' ').trim();
+}
+
+type Sentence = {
+  startMs: number;
+  endMs: number;
+  text: string;
+};
+
+/**
+ * Split a Whisper segment into one-sentence chunks using word-level timestamps.
+ * Splits on (a) a word ending with Japanese/Western sentence-ending punctuation
+ * or (b) a gap between consecutive words exceeding `pauseThresholdMs`.
+ * Falls back to the original segment when no words array is present.
+ */
+function splitSegmentBySentence(
+  seg: WhisperSegment,
+  pauseThresholdMs: number,
+): Sentence[] {
+  const words = seg.words ?? [];
+  if (words.length === 0) {
+    const text = cleanSegment(seg.text ?? '');
+    if (!text) return [];
+    return [
+      {
+        startMs: Math.max(0, Math.round(seg.start * 1000)),
+        endMs: Math.max(0, Math.round(seg.end * 1000)),
+        text,
+      },
+    ];
+  }
+
+  const sentences: Sentence[] = [];
+  let buf: WhisperWord[] = [];
+
+  const flush = () => {
+    if (buf.length === 0) return;
+    const text = cleanSegment(buf.map((w) => w.word).join(''));
+    if (!text) {
+      buf = [];
+      return;
+    }
+    const startMs = Math.max(0, Math.round(buf[0]!.start * 1000));
+    const endMs = Math.max(startMs + 1, Math.round(buf[buf.length - 1]!.end * 1000));
+    sentences.push({ startMs, endMs, text });
+    buf = [];
+  };
+
+  for (let i = 0; i < words.length; i++) {
+    const w = words[i]!;
+    buf.push(w);
+
+    const next = words[i + 1];
+    const gapMs = next ? Math.round((next.start - w.end) * 1000) : 0;
+    const endsSentence = SENTENCE_END_RE.test(w.word.trim());
+    const longPause = next ? gapMs >= pauseThresholdMs : false;
+
+    if (endsSentence || longPause) flush();
+  }
+  flush();
+
+  return sentences;
 }
 
 export async function transcribe(opts: TranscribeOptions): Promise<SubtitleCue[]> {
@@ -69,6 +142,10 @@ export async function transcribe(opts: TranscribeOptions): Promise<SubtitleCue[]
   form.set('file', blob, path.basename(opts.audioPath));
   form.set('model', 'whisper-1');
   form.set('response_format', 'verbose_json');
+  // Word-level timestamps let us split each Whisper segment into single
+  // sentences ourselves — Whisper groups by acoustic chunks, not by grammar.
+  form.set('timestamp_granularities[]', 'word');
+  form.set('timestamp_granularities[]', 'segment');
   if (opts.language) form.set('language', opts.language);
 
   let res: Awaited<ReturnType<typeof fetch>>;
@@ -92,15 +169,14 @@ export async function transcribe(opts: TranscribeOptions): Promise<SubtitleCue[]
 
   const json = (await res.json()) as VerboseJson;
   const segments = json.segments ?? [];
+  const pauseThresholdMs = opts.pauseThresholdMs ?? 400;
 
   const cues: SubtitleCue[] = [];
   let idx = 0;
   for (const seg of segments) {
-    const text = cleanSegment(seg.text ?? '');
-    if (!text) continue;
-    const startMs = Math.max(0, Math.round(seg.start * 1000));
-    const endMs = Math.max(startMs + 1, Math.round(seg.end * 1000));
-    cues.push({ index: idx++, startMs, endMs, text });
+    for (const s of splitSegmentBySentence(seg, pauseThresholdMs)) {
+      cues.push({ index: idx++, startMs: s.startMs, endMs: s.endMs, text: s.text });
+    }
   }
   return cues;
 }
