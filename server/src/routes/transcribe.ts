@@ -1,7 +1,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import type { FastifyInstance } from 'fastify';
-import { requireSession, sessionDir } from '../lib/session.js';
+import { cuesFromSubtitleCues, requireSession, sessionDir } from '../lib/session.js';
 import { transcribe } from '../lib/whisper.js';
 import { extractFullAudio } from '../lib/ffmpeg.js';
 import { persistSession } from '../lib/persistence.js';
@@ -53,14 +53,8 @@ export async function transcribeRoutes(app: FastifyInstance) {
         audioPath,
         language: body.language ?? 'ja',
       });
-      session.cues = cues;
+      session.cues = cuesFromSubtitleCues(cues);
       session.whisperWords = words;
-      session.cards = cues.map((c) => ({
-        ...c,
-        audioReady: false,
-        screenshotReady: false,
-        rev: 0,
-      }));
       persistSession(session, { immediate: true });
       write('done', { cueCount: cues.length });
     } catch (err) {

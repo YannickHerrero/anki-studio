@@ -8,12 +8,52 @@ import type { AudioStream } from './ffmpeg.js';
 
 export type Decision = 'keep' | 'skip';
 
-export type Card = SubtitleCue & {
+/**
+ * A subtitle line in a session: the parsed text + ingest-time timing PLUS
+ * any media-processing state. Replaces the older `Card` type — there is no
+ * longer a 1:1 relationship between a cue and an Anki card.
+ */
+export type Cue = SubtitleCue & {
   audioReady: boolean;
   screenshotReady: boolean;
   rev: number;
+  /** @deprecated moves to Pick when /export is rebuilt around the pile. */
   exported?: boolean;
 };
+
+export type WordDetails = {
+  /** Short, context-aware definition for the lemma as used in this sentence. */
+  definition: string;
+  /** Canonical hiragana reading. */
+  reading: string;
+  /** e.g. "[2]" — empty if the model doesn't know. */
+  pitchPattern?: string;
+  /** "very common", "common", "uncommon", "rare". */
+  frequency?: string;
+  partOfSpeech?: string;
+  usageNotes?: string;
+};
+
+/**
+ * A single chosen target word — one card to ship in the next .apkg.
+ * id is unique within a session: same word picked from two different cues
+ * produces two picks with different ids and different example sentences.
+ */
+export type Pick = {
+  id: string;
+  cueIndex: number;
+  lemma: string;
+  surface: string;
+  reading: string;
+  addedAt: number;
+  exported?: boolean;
+  /** Filled at export time and persisted so re-export is cheap. */
+  details?: WordDetails;
+};
+
+export function pickId(cueIndex: number, lemma: string): string {
+  return `${cueIndex}_${lemma}`;
+}
 
 export type ProcessingStatus = 'pending' | 'processing' | 'ready' | 'error';
 
@@ -36,12 +76,13 @@ export type Session = {
   videoRemoved?: boolean;
   subtitlePath: string;
   subtitleOriginalName: string;
-  cues: SubtitleCue[];
-  cards: Card[];
+  cues: Cue[];
+  picks: Pick[];
   audioStreams?: AudioStream[];
   audioTrackIndex?: number;
   whisperWords?: WhisperWord[];
-  decisions: Record<number, Decision>;
+  /** @deprecated removed in the next commit when /decisions is dropped. */
+  decisions?: Record<number, Decision>;
   status: ProcessingStatus;
   errorMessage?: string;
   lastApkgPath?: string;
@@ -79,7 +120,7 @@ export async function createSession(source: SessionSource = 'upload'): Promise<S
     subtitlePath: '',
     subtitleOriginalName: '',
     cues: [],
-    cards: [],
+    picks: [],
     decisions: {},
     status: 'pending',
   };
@@ -112,4 +153,14 @@ export function requireSession(sid: string): Session {
 export async function discardSession(sid: string): Promise<void> {
   sessions.delete(sid);
   await fs.rm(sessionDir(sid), { recursive: true, force: true });
+}
+
+/** Helper for routes that turn freshly-parsed cues into Cue[]. */
+export function cuesFromSubtitleCues(input: SubtitleCue[]): Cue[] {
+  return input.map((c) => ({
+    ...c,
+    audioReady: false,
+    screenshotReady: false,
+    rev: 0,
+  }));
 }

@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { pipeline } from 'node:stream/promises';
 import type { FastifyInstance } from 'fastify';
-import { createSession, sessionDir } from '../lib/session.js';
+import { createSession, cuesFromSubtitleCues, sessionDir } from '../lib/session.js';
 import { parseSubtitleFile } from '../lib/subtitles.js';
 import { persistSession } from '../lib/persistence.js';
 import { pickJapaneseTrack, probeAudioStreams, probeDurationMs } from '../lib/ffmpeg.js';
@@ -50,13 +50,7 @@ export async function uploadRoutes(app: FastifyInstance) {
 
     if (gotSubs) {
       const cues = await parseSubtitleFile(session.subtitlePath);
-      session.cues = cues;
-      session.cards = cues.map((c) => ({
-        ...c,
-        audioReady: false,
-        screenshotReady: false,
-        rev: 0,
-      }));
+      session.cues = cuesFromSubtitleCues(cues);
     }
     session.title = session.videoOriginalName;
 
@@ -87,7 +81,7 @@ export async function uploadRoutes(app: FastifyInstance) {
 
     return {
       sessionId: session.id,
-      cueCount: session.cards.length,
+      cueCount: session.cues.length,
       needsTranscription: !gotSubs,
       audioStreams: session.audioStreams ?? [],
       audioTrackIndex: session.audioTrackIndex ?? null,

@@ -50,7 +50,7 @@ export async function exportRoutes(app: FastifyInstance) {
       return reply.code(400).send({ error: 'openrouterKey and model are required' });
     }
 
-    const allKept = session.cards.filter((c) => session.decisions[c.index] === 'keep');
+    const allKept = session.cues.filter((c) => session.decisions?.[c.index] === 'keep');
     const kept = body.includeExported
       ? allKept
       : allKept.filter((c) => !c.exported);

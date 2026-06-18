@@ -68,19 +68,18 @@ export async function alignRoutes(app: FastifyInstance) {
       write('align', { stage: 'matching' });
       const result = alignCues(session.cues, words);
 
-      // Carry alignment back to the cards in place — keep their indices and
-      // any flags (exported, decisions stay valid because indices haven't changed).
-      const newCueByIndex = new Map(result.cues.map((c) => [c.index, c]));
-      session.cues = result.cues;
-      for (const card of session.cards) {
-        const fresh = newCueByIndex.get(card.index);
+      // Carry alignment back into the cues in place — keep indices, audioReady,
+      // screenshotReady, rev etc. so /process can re-cut only the cues that moved.
+      const newByIndex = new Map(result.cues.map((c) => [c.index, c]));
+      for (const cue of session.cues) {
+        const fresh = newByIndex.get(cue.index);
         if (!fresh) continue;
-        if (fresh.startMs !== card.startMs || fresh.endMs !== card.endMs) {
-          card.startMs = fresh.startMs;
-          card.endMs = fresh.endMs;
-          card.audioReady = false;
-          card.screenshotReady = false;
-          card.rev += 1;
+        if (fresh.startMs !== cue.startMs || fresh.endMs !== cue.endMs) {
+          cue.startMs = fresh.startMs;
+          cue.endMs = fresh.endMs;
+          cue.audioReady = false;
+          cue.screenshotReady = false;
+          cue.rev += 1;
         }
       }
 

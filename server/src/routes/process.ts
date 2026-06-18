@@ -29,33 +29,33 @@ export async function processRoutes(app: FastifyInstance) {
 
     session.status = 'processing';
     persistSession(session, { immediate: true });
-    write({ event: 'start', data: { total: session.cards.length } });
+    write({ event: 'start', data: { total: session.cues.length } });
 
     try {
       let audioDone = 0;
       let screenshotDone = 0;
-      const total = session.cards.length;
+      const total = session.cues.length;
 
-      await mapWithConcurrency(session.cards, 4, async (card) => {
-        const audioOut = audioPath(sid, card.index);
-        const shotOut = screenshotPath(sid, card.index);
+      await mapWithConcurrency(session.cues, 4, async (cue) => {
+        const audioOut = audioPath(sid, cue.index);
+        const shotOut = screenshotPath(sid, cue.index);
 
         await Promise.all([
           extractAudio(session.videoPath, audioOut, {
-            startMs: card.startMs,
-            endMs: card.endMs,
+            startMs: cue.startMs,
+            endMs: cue.endMs,
             audioTrackIndex: session.audioTrackIndex,
           }).then(() => {
-            card.audioReady = true;
+            cue.audioReady = true;
             audioDone++;
             persistSession(session);
             write({ event: 'progress', data: { kind: 'audio', done: audioDone, total } });
           }),
           extractScreenshot(session.videoPath, shotOut, {
-            startMs: card.startMs,
-            endMs: card.endMs,
+            startMs: cue.startMs,
+            endMs: cue.endMs,
           }).then(() => {
-            card.screenshotReady = true;
+            cue.screenshotReady = true;
             screenshotDone++;
             persistSession(session);
             write({ event: 'progress', data: { kind: 'screenshot', done: screenshotDone, total } });

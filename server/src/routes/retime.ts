@@ -28,7 +28,7 @@ export async function retimeRoutes(app: FastifyInstance) {
     }
 
     const from = Math.max(0, Math.floor(body.fromIndex ?? 0));
-    const affected = session.cards.slice(from);
+    const affected = session.cues.slice(from);
 
     reply.raw.writeHead(200, {
       'Content-Type': 'text/event-stream',
@@ -43,29 +43,29 @@ export async function retimeRoutes(app: FastifyInstance) {
     try {
       // Apply timing change first so the session reflects the new state even if
       // re-cutting media partially fails.
-      for (const card of affected) {
-        card.startMs = Math.max(0, card.startMs + delta);
-        card.endMs = Math.max(card.startMs + 1, card.endMs + delta);
-        card.audioReady = false;
-        card.screenshotReady = false;
-        card.rev += 1;
+      for (const cue of affected) {
+        cue.startMs = Math.max(0, cue.startMs + delta);
+        cue.endMs = Math.max(cue.startMs + 1, cue.endMs + delta);
+        cue.audioReady = false;
+        cue.screenshotReady = false;
+        cue.rev += 1;
       }
 
       let done = 0;
-      await mapWithConcurrency(affected, 4, async (card) => {
+      await mapWithConcurrency(affected, 4, async (cue) => {
         await Promise.all([
-          extractAudio(session.videoPath, audioPath(sid, card.index), {
-            startMs: card.startMs,
-            endMs: card.endMs,
+          extractAudio(session.videoPath, audioPath(sid, cue.index), {
+            startMs: cue.startMs,
+            endMs: cue.endMs,
             audioTrackIndex: session.audioTrackIndex,
           }).then(() => {
-            card.audioReady = true;
+            cue.audioReady = true;
           }),
-          extractScreenshot(session.videoPath, screenshotPath(sid, card.index), {
-            startMs: card.startMs,
-            endMs: card.endMs,
+          extractScreenshot(session.videoPath, screenshotPath(sid, cue.index), {
+            startMs: cue.startMs,
+            endMs: cue.endMs,
           }).then(() => {
-            card.screenshotReady = true;
+            cue.screenshotReady = true;
           }),
         ]);
         done++;

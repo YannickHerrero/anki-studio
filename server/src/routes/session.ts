@@ -8,11 +8,8 @@ import {
 import { deleteSession, persistSession } from '../lib/persistence.js';
 
 function summarize(s: ReturnType<typeof allSessions>[number]) {
-  const kept = Object.values(s.decisions).filter((d) => d === 'keep').length;
-  const skipped = Object.values(s.decisions).filter((d) => d === 'skip').length;
-  const exported = s.cards.filter(
-    (c) => c.exported && s.decisions[c.index] === 'keep',
-  ).length;
+  const pickCount = s.picks.length;
+  const exportedCount = s.picks.filter((p) => p.exported).length;
   return {
     id: s.id,
     source: s.source,
@@ -22,11 +19,10 @@ function summarize(s: ReturnType<typeof allSessions>[number]) {
     errorMessage: s.errorMessage,
     createdAt: s.createdAt,
     updatedAt: s.updatedAt,
-    totalCards: s.cards.length,
-    keptCount: kept,
-    skippedCount: skipped,
-    exportedCount: exported,
-    pendingExportCount: kept - exported,
+    cueCount: s.cues.length,
+    pileCount: pickCount,
+    exportedCount,
+    pendingExportCount: pickCount - exportedCount,
     hasExport: !!s.lastApkgPath,
     videoRemoved: !!s.videoRemoved,
   };
@@ -60,8 +56,8 @@ export async function sessionRoutes(app: FastifyInstance) {
       youtubeUrl: session.youtubeUrl,
       videoOriginalName: session.videoOriginalName,
       subtitleOriginalName: session.subtitleOriginalName,
-      cueCount: session.cards.length,
-      decisions: session.decisions,
+      cueCount: session.cues.length,
+      pileCount: session.picks.length,
       errorMessage: session.errorMessage,
     };
   });
@@ -74,7 +70,7 @@ export async function sessionRoutes(app: FastifyInstance) {
     return {
       source: session.source,
       videoRemoved: !!session.videoRemoved,
-      cards: session.cards.map((c) => ({
+      cards: session.cues.map((c) => ({
         index: c.index,
         text: c.text,
         translation: c.translation,
@@ -86,9 +82,8 @@ export async function sessionRoutes(app: FastifyInstance) {
         audioReady: c.audioReady,
         screenshotReady: c.screenshotReady,
         rev: c.rev,
-        exported: !!c.exported,
       })),
-      decisions: session.decisions,
+      decisions: session.decisions ?? {},
     };
   });
 
@@ -99,6 +94,7 @@ export async function sessionRoutes(app: FastifyInstance) {
     if (!body || typeof body.decisions !== 'object' || body.decisions === null) {
       return reply.code(400).send({ error: 'missing decisions' });
     }
+    session.decisions ??= {};
 
     for (const [k, v] of Object.entries(body.decisions)) {
       const idx = Number(k);

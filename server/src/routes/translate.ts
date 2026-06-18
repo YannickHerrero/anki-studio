@@ -20,7 +20,7 @@ export async function translateRoutes(app: FastifyInstance) {
     if (!body.openrouterKey || !body.model) {
       return reply.code(400).send({ error: 'openrouterKey and model are required' });
     }
-    if (session.cards.length === 0) {
+    if (session.cues.length === 0) {
       return reply.code(400).send({ error: 'no cues to translate yet' });
     }
 
@@ -33,17 +33,14 @@ export async function translateRoutes(app: FastifyInstance) {
     const write = (event: string, data: unknown) => reply.raw.write(sseLine(event, data));
 
     try {
-      write('start', { count: session.cards.length });
-      const sentences = session.cards.map((c) => c.text);
+      write('start', { count: session.cues.length });
+      const sentences = session.cues.map((c) => c.text);
       const translations = await translateBatch(sentences, {
         apiKey: body.openrouterKey,
         model: body.model,
       });
-      session.cards.forEach((card, i) => {
-        const t = translations[i] ?? '';
-        card.translation = t;
-        const cue = session.cues.find((c) => c.index === card.index);
-        if (cue) cue.translation = t;
+      session.cues.forEach((cue, i) => {
+        cue.translation = translations[i] ?? '';
       });
       persistSession(session, { immediate: true });
       write('done', { translatedCount: translations.length });

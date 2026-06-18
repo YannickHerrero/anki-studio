@@ -1,5 +1,5 @@
 import type { FastifyInstance } from 'fastify';
-import { requireSession } from '../lib/session.js';
+import { cuesFromSubtitleCues, requireSession } from '../lib/session.js';
 import { refineSentenceBoundaries } from '../lib/openrouter.js';
 import { cuesFromBoundaries } from '../lib/whisper.js';
 import { persistSession } from '../lib/persistence.js';
@@ -47,7 +47,7 @@ export async function refineSplitsRoutes(app: FastifyInstance) {
       // we already have and surface a warning instead of clobbering them.
       if (boundaries.length === 0) {
         write('done', {
-          cueCount: session.cards.length,
+          cueCount: session.cues.length,
           warning: 'model returned no boundaries; cues unchanged',
         });
         return;
@@ -56,21 +56,16 @@ export async function refineSplitsRoutes(app: FastifyInstance) {
       const newCues = cuesFromBoundaries(words, boundaries);
       if (newCues.length === 0) {
         write('done', {
-          cueCount: session.cards.length,
+          cueCount: session.cues.length,
           warning: 'boundaries produced no cues; cues unchanged',
         });
         return;
       }
 
-      session.cues = newCues;
-      session.cards = newCues.map((c) => ({
-        ...c,
-        audioReady: false,
-        screenshotReady: false,
-        rev: 0,
-      }));
-      // Decisions referenced the old card indices and no longer make sense.
+      session.cues = cuesFromSubtitleCues(newCues);
+      // Decisions and picks referenced the old cue indices and no longer make sense.
       session.decisions = {};
+      session.picks = [];
       persistSession(session, { immediate: true });
       write('done', { cueCount: newCues.length });
     } catch (err) {

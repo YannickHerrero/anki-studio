@@ -26,7 +26,7 @@ export async function chatRoutes(app: FastifyInstance) {
     if (typeof body.index !== 'number') {
       return reply.code(400).send({ error: 'index is required' });
     }
-    const current = session.cards.find((c) => c.index === body.index);
+    const current = session.cues.find((c) => c.index === body.index);
     if (!current) {
       return reply.code(404).send({ error: `no card at index ${body.index}` });
     }
@@ -49,7 +49,7 @@ export async function chatRoutes(app: FastifyInstance) {
           text: current.text,
           translation: current.translation,
           note: current.note,
-          transcript: session.cards.map((c) => ({
+          transcript: session.cues.map((c) => ({
             index: c.index,
             text: c.text,
             translation: c.translation,
