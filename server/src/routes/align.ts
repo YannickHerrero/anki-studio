@@ -28,8 +28,8 @@ export async function alignRoutes(app: FastifyInstance) {
     if (session.cues.length === 0) {
       return reply.code(400).send({ error: 'no cues to align — upload a subtitle file first' });
     }
-    if (!session.videoPath) {
-      return reply.code(400).send({ error: 'session has no video' });
+    if (!session.videoPath || session.videoRemoved) {
+      return reply.code(409).send({ error: 'video removed — re-link it to align' });
     }
 
     reply.raw.writeHead(200, {
