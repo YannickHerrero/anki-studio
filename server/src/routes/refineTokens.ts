@@ -2,15 +2,18 @@ import path from 'node:path';
 import { createRequire } from 'node:module';
 import type { FastifyInstance } from 'fastify';
 import kuromoji from 'kuromoji';
-import { requireSession } from '../lib/session.js';
+import { requireSession, type Cue } from '../lib/session.js';
 import { refineTokenBatch, type RefineTokenInput } from '../lib/openrouter.js';
 import { stripFurigana } from '../lib/furigana.js';
 import { persistSession } from '../lib/persistence.js';
+import { mapWithConcurrency } from '../lib/pool.js';
 
 type Body = {
   openrouterKey?: string;
   model?: string;
   batchSize?: number;
+  /** Max number of batches in flight at once. Default 5. */
+  concurrency?: number;
 };
 
 function sseLine(event: string, data: unknown): string {
@@ -44,8 +47,12 @@ export async function refineTokensRoutes(app: FastifyInstance) {
     if (session.cues.length === 0) {
       return reply.code(400).send({ error: 'no cues to refine' });
     }
+    // Pull into locals so the closure below isn't widened by TS.
+    const apiKey = body.openrouterKey;
+    const model = body.model;
 
     const batchSize = Math.max(1, Math.min(50, body.batchSize ?? 20));
+    const concurrency = Math.max(1, Math.min(20, body.concurrency ?? 5));
 
     reply.raw.writeHead(200, {
       'Content-Type': 'text/event-stream',
@@ -56,14 +63,21 @@ export async function refineTokensRoutes(app: FastifyInstance) {
     const write = (event: string, data: unknown) => reply.raw.write(sseLine(event, data));
 
     try {
-      write('start', { total: session.cues.length, batchSize });
+      write('start', { total: session.cues.length, batchSize, concurrency });
       const tk = await getKuromoji();
+
+      // Build all batches up-front so we can fan them out in parallel.
+      const batches: Cue[][] = [];
+      for (let i = 0; i < session.cues.length; i += batchSize) {
+        batches.push(session.cues.slice(i, i + batchSize));
+      }
 
       let refinedCount = 0;
       let failedCount = 0;
-      for (let i = 0; i < session.cues.length; i += batchSize) {
-        const slice = session.cues.slice(i, i + batchSize);
+      let cuesProcessed = 0;
+      const totalCues = session.cues.length;
 
+      await mapWithConcurrency(batches, concurrency, async (slice) => {
         const items: RefineTokenInput[] = slice.map((c) => {
           const sentence = stripFurigana(c.text);
           const raw = tk.tokenize(sentence);
@@ -80,20 +94,17 @@ export async function refineTokensRoutes(app: FastifyInstance) {
 
         let map;
         try {
-          map = await refineTokenBatch(items, {
-            apiKey: body.openrouterKey,
-            model: body.model,
-          });
+          map = await refineTokenBatch(items, { apiKey, model });
         } catch (err) {
-          // A whole batch failing is non-fatal — fall back to kuromoji for these.
           failedCount += slice.length;
+          cuesProcessed += slice.length;
           write('progress', {
-            done: Math.min(i + batchSize, session.cues.length),
-            total: session.cues.length,
+            done: cuesProcessed,
+            total: totalCues,
             refined: refinedCount,
             failed: failedCount,
           });
-          continue;
+          return;
         }
 
         for (const cue of slice) {
@@ -106,14 +117,15 @@ export async function refineTokensRoutes(app: FastifyInstance) {
           }
         }
 
-        persistSession(session);
+        cuesProcessed += slice.length;
+        persistSession(session); // debounced
         write('progress', {
-          done: Math.min(i + batchSize, session.cues.length),
-          total: session.cues.length,
+          done: cuesProcessed,
+          total: totalCues,
           refined: refinedCount,
           failed: failedCount,
         });
-      }
+      });
 
       persistSession(session, { immediate: true });
       write('done', { refined: refinedCount, failed: failedCount });
