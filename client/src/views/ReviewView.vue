@@ -730,8 +730,9 @@ const picksForCurrentCue = computed(() =>
       <ul v-else class="pile-list">
         <li v-for="p in session.picks" :key="p.id" class="pile-item">
           <button class="pile-item__head" @click="index = session.cards.findIndex((c) => c.index === p.cueIndex)">
-            <span class="pile-item__lemma">{{ p.lemma }}</span>
-            <span v-if="p.surface !== p.lemma" class="pile-item__surface muted small">({{ p.surface }})</span>
+            <!-- Surface is what shows on the card front, so display it primary. -->
+            <span class="pile-item__surface">{{ p.surface }}</span>
+            <span v-if="p.surface !== p.lemma" class="pile-item__lemma muted small">→ {{ p.lemma }}</span>
           </button>
           <span class="pile-item__meta muted small">cue #{{ p.cueIndex }}</span>
           <span v-if="p.exported" class="pile-item__exported small">exported</span>
@@ -1096,11 +1097,11 @@ audio {
   flex: 1;
   min-width: 0;
 }
-.pile-item__lemma {
+.pile-item__surface {
   font-size: 14px;
   font-weight: 600;
 }
-.pile-item__surface {
+.pile-item__lemma {
   font-size: 11px;
 }
 .pile-item__meta {
