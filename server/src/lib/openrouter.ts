@@ -160,6 +160,166 @@ export async function enrichSentence(input: EnrichInput, opts: EnrichOptions): P
   };
 }
 
+// ----- Word-details enrichment for vocab cards -----
+
+export type WordItem = {
+  lemma: string;
+  surface: string;
+  sentence: string;
+};
+
+export type WordDetailsOut = {
+  definition: string;
+  reading: string;
+  pitchPattern?: string;
+  frequency?: string;
+  partOfSpeech?: string;
+  usageNotes?: string;
+};
+
+const WORD_DETAILS_SCHEMA = {
+  type: 'object',
+  properties: {
+    details: {
+      type: 'array',
+      description: 'One entry per input word, in the same order.',
+      items: {
+        type: 'object',
+        properties: {
+          definition: {
+            type: 'string',
+            description:
+              "A short context-aware English definition (1-2 lines) for how the word is used in the given sentence. Don't list every sense.",
+          },
+          reading: {
+            type: 'string',
+            description: 'Hiragana reading of the dictionary form (lemma).',
+          },
+          pitchPattern: {
+            type: 'string',
+            description:
+              "Tokyo pitch accent in bracketed-number form (e.g. '[2]', '[0]'). Empty string if unknown.",
+          },
+          frequency: {
+            type: 'string',
+            description: "One of: 'very common', 'common', 'uncommon', 'rare'.",
+          },
+          partOfSpeech: {
+            type: 'string',
+            description: "Short label like 'Ichidan verb', 'い-adjective', 'noun', 'adverb'.",
+          },
+          usageNotes: {
+            type: 'string',
+            description:
+              "One short sentence (or empty) about how the word behaves — collocations, register, common particles, etc.",
+          },
+        },
+        required: [
+          'definition',
+          'reading',
+          'pitchPattern',
+          'frequency',
+          'partOfSpeech',
+          'usageNotes',
+        ],
+        additionalProperties: false,
+      },
+    },
+  },
+  required: ['details'],
+  additionalProperties: false,
+};
+
+const WORD_DETAILS_SYSTEM = `You produce flashcard annotations for one Japanese word at a time.
+You receive a numbered list of items, each with the dictionary form (lemma), the
+surface form as seen in the sentence, and the sentence the word appears in.
+For each item return ONE entry with: a short context-aware definition (1-2 lines,
+matching the meaning used in that sentence — not every sense of the word), the
+hiragana reading of the lemma, the Tokyo pitch accent (bracketed-number form like
+'[2]' or empty string if unknown), a frequency label ('very common', 'common',
+'uncommon', 'rare'), a short part-of-speech label, and a brief usage note (or empty
+string). The output array must have the same length and order as the input list.`;
+
+/**
+ * Enrich a batch of target words with context-aware details. One OpenRouter call.
+ * Order of the output array matches the order of the input array; missing entries
+ * are padded with placeholders so downstream code can index by position.
+ */
+export async function enrichWordBatch(
+  items: WordItem[],
+  opts: EnrichOptions,
+): Promise<WordDetailsOut[]> {
+  if (items.length === 0) return [];
+
+  const numbered = items
+    .map(
+      (it, i) =>
+        `${i + 1}. lemma=${it.lemma}; surface=${it.surface}; sentence=${it.sentence}`,
+    )
+    .join('\n');
+
+  const body = {
+    model: opts.model,
+    messages: [
+      { role: 'system', content: WORD_DETAILS_SYSTEM },
+      { role: 'user', content: numbered },
+    ],
+    response_format: {
+      type: 'json_schema',
+      json_schema: { name: 'word_details_batch', strict: true, schema: WORD_DETAILS_SCHEMA },
+    },
+  };
+
+  const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${opts.apiKey}`,
+      'HTTP-Referer': opts.referer ?? 'http://localhost:5173',
+      'X-Title': opts.appName ?? 'Anki Studio',
+    },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`openrouter ${res.status}: ${text.slice(0, 200)}`);
+  }
+  const json = (await res.json()) as ChatResponse;
+  const content = json.choices?.[0]?.message?.content;
+  if (!content) throw new Error('openrouter returned empty content');
+
+  const parsed = JSON.parse(content) as { details?: WordDetailsOut[] };
+  const out = Array.isArray(parsed.details) ? parsed.details : [];
+  while (out.length < items.length) {
+    out.push({
+      definition: '',
+      reading: '',
+      pitchPattern: '',
+      frequency: '',
+      partOfSpeech: '',
+      usageNotes: '',
+    });
+  }
+  if (out.length > items.length) out.length = items.length;
+  return out;
+}
+
+export function wordDetailsToHtml(details: WordDetailsOut): string {
+  if (!details.definition && !details.reading) return '';
+  const meta: string[] = [];
+  if (details.reading) meta.push(escapeHtml(details.reading));
+  if (details.pitchPattern) meta.push(escapeHtml(details.pitchPattern));
+  if (details.partOfSpeech) meta.push(escapeHtml(details.partOfSpeech));
+  if (details.frequency) meta.push(escapeHtml(details.frequency));
+  const metaHtml = meta.length
+    ? `<div class="js-word-meta">${meta.map((m) => `<span>${m}</span>`).join('<span class="js-word-meta__sep">·</span>')}</div>`
+    : '';
+  const usageHtml = details.usageNotes
+    ? `<div class="js-word-usage">${escapeHtml(details.usageNotes)}</div>`
+    : '';
+  return `<div class="js-word">${metaHtml}<div class="js-word-def">${escapeHtml(details.definition)}</div>${usageHtml}</div>`;
+}
+
 function escapeHtml(s: string): string {
   return s
     .replace(/&/g, '&amp;')
