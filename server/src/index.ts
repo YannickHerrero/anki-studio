@@ -15,6 +15,7 @@ import { transcribeRoutes } from './routes/transcribe.js';
 import { translateRoutes } from './routes/translate.js';
 import { refineSplitsRoutes } from './routes/refineSplits.js';
 import { alignRoutes } from './routes/align.js';
+import { editCardRoutes } from './routes/editCard.js';
 import { rehydrateSessions } from './lib/persistence.js';
 
 async function main() {
@@ -43,6 +44,7 @@ async function main() {
   await app.register(translateRoutes);
   await app.register(refineSplitsRoutes);
   await app.register(alignRoutes);
+  await app.register(editCardRoutes);
 
   await app.listen({ port: config.port, host: config.host });
 }
