@@ -2,13 +2,22 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { FastifyInstance } from 'fastify';
-import { requireSession, audioPath, screenshotPath, sessionDir } from '../lib/session.js';
+import {
+  requireSession,
+  audioPath,
+  screenshotPath,
+  sessionDir,
+  type Cue,
+  type Pick,
+} from '../lib/session.js';
 import { buildApkg, type ApkgNote } from '../lib/apkg.js';
 import {
   enrichSentence,
-  vocabularyToHtml,
+  enrichWordBatch,
   grammarToHtml,
+  wordDetailsToHtml,
   type Enrichment,
+  type WordItem,
 } from '../lib/openrouter.js';
 import { mapWithConcurrency } from '../lib/pool.js';
 import { persistSession } from '../lib/persistence.js';
@@ -19,7 +28,7 @@ type ExportBody = {
   openrouterKey?: string;
   model?: string;
   appName?: string;
-  /** Include cards that were already shipped in a previous .apkg. Default false. */
+  /** Re-enrich and ship picks that have already been exported once. */
   includeExported?: boolean;
 };
 
@@ -39,6 +48,22 @@ function sseLine(event: string, data: unknown): string {
   return `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
 }
 
+/**
+ * Build the `Sentence` field: full sentence (kanji[furigana] markup) with the
+ * target word's surface form wrapped in <span class="js-target">. We just do
+ * a literal substring replacement on the FIRST occurrence of the surface form.
+ */
+function highlightTargetInSentence(sentence: string, surface: string): string {
+  if (!surface) return sentence;
+  const idx = sentence.indexOf(surface);
+  if (idx < 0) return sentence;
+  return (
+    sentence.slice(0, idx) +
+    `<span class="js-target">${surface}</span>` +
+    sentence.slice(idx + surface.length)
+  );
+}
+
 export async function exportRoutes(app: FastifyInstance) {
   app.post('/session/:sid/export', async (req, reply) => {
     const { sid } = req.params as { sid: string };
@@ -50,12 +75,24 @@ export async function exportRoutes(app: FastifyInstance) {
       return reply.code(400).send({ error: 'openrouterKey and model are required' });
     }
 
-    // Pile-based export. Task 54 rebuilds this to ship one note per pick;
-    // for now the keep-style code path is gone and we surface a clear error.
-    const kept: typeof session.cues = [];
-    if (kept.length === 0) {
-      return reply.code(501).send({
-        error: 'export not implemented for pile model yet — coming in task 54',
+    const allPicks = session.picks;
+    const toShip: Pick[] = body.includeExported
+      ? [...allPicks]
+      : allPicks.filter((p) => !p.exported);
+    if (toShip.length === 0) {
+      return reply.code(400).send({
+        error: body.includeExported
+          ? 'pile is empty'
+          : 'no new picks to ship — add words in review or pass includeExported',
+      });
+    }
+
+    // Index cues by their stable index so picks can find their source sentence.
+    const cueByIndex = new Map<number, Cue>(session.cues.map((c) => [c.index, c]));
+    const missing = toShip.filter((p) => !cueByIndex.has(p.cueIndex));
+    if (missing.length > 0) {
+      return reply.code(409).send({
+        error: `${missing.length} picks reference a cue that no longer exists; delete them and retry`,
       });
     }
 
@@ -67,24 +104,53 @@ export async function exportRoutes(app: FastifyInstance) {
     });
     const write = (event: string, data: unknown) => reply.raw.write(sseLine(event, data));
 
-    write('start', { total: kept.length });
-
     try {
-      let done = 0;
-      const enrichments = new Map<number, Enrichment>();
-      await mapWithConcurrency(kept, 5, async (card) => {
-        const sentence = stripFurigana(card.text);
-        const input = card.translation
-          ? { sentence, existingTranslation: card.translation }
-          : { sentence };
+      write('start', { total: toShip.length });
+
+      // 1. Word-level details: one batched call per ~20 picks so a 200-pick
+      //    pile still fits comfortably in one model response.
+      const BATCH = 20;
+      let wordDone = 0;
+      const wordDetailsByPick = new Map<string, ReturnType<typeof wordDetailsToHtml>>();
+      for (let i = 0; i < toShip.length; i += BATCH) {
+        const slice = toShip.slice(i, i + BATCH);
+        const items: WordItem[] = slice.map((p) => ({
+          lemma: p.lemma,
+          surface: p.surface,
+          sentence: stripFurigana(cueByIndex.get(p.cueIndex)!.text),
+        }));
+        const details = await enrichWordBatch(items, {
+          apiKey: body.openrouterKey!,
+          model: body.model!,
+          appName: body.appName,
+        });
+        details.forEach((d, k) => {
+          const pick = slice[k]!;
+          pick.details = d;
+          wordDetailsByPick.set(pick.id, wordDetailsToHtml(d));
+        });
+        wordDone += slice.length;
+        write('progress', { kind: 'word', done: wordDone, total: toShip.length });
+      }
+
+      // 2. Sentence-level grammar: one call per UNIQUE cue across the pile.
+      //    Translation reused from cue.translation (set by /translate already).
+      const uniqueCueIndices = Array.from(new Set(toShip.map((p) => p.cueIndex)));
+      let grammarDone = 0;
+      const grammarByCue = new Map<number, Enrichment>();
+      await mapWithConcurrency(uniqueCueIndices, 5, async (cueIndex) => {
+        const cue = cueByIndex.get(cueIndex)!;
+        const input = cue.translation
+          ? { sentence: stripFurigana(cue.text), existingTranslation: cue.translation }
+          : { sentence: stripFurigana(cue.text) };
         const e = await enrichSentence(input, {
           apiKey: body.openrouterKey!,
           model: body.model!,
           appName: body.appName,
         });
-        enrichments.set(card.index, e);
-        done++;
-        write('progress', { kind: 'enrich', done, total: kept.length });
+        grammarByCue.set(cueIndex, e);
+        grammarDone++;
+        write('progress', { kind: 'grammar', done: grammarDone, total: uniqueCueIndices.length });
       });
 
       const { front, back, css } = await readAnkiAssets();
@@ -93,10 +159,29 @@ export async function exportRoutes(app: FastifyInstance) {
       const outName = `${safeDeck || 'deck'}.apkg`;
       const outPath = path.join(sessionDir(sid), outName);
 
-      // task 54 will populate notes from picks.
-      const notes: ApkgNote[] = [];
-
       write('build', { stage: 'package' });
+
+      const notes: ApkgNote[] = toShip.map((pick) => {
+        const cue = cueByIndex.get(pick.cueIndex)!;
+        const enr = grammarByCue.get(pick.cueIndex);
+        const sentenceWithTarget = highlightTargetInSentence(cue.text, pick.surface);
+        const audioFile = `as_${sid.slice(0, 8)}_${cue.index}.mp3`;
+        const shotFile = `as_${sid.slice(0, 8)}_${cue.index}.jpg`;
+        return {
+          targetWord: pick.lemma,
+          sentence: sentenceWithTarget,
+          sentenceTranslation: cue.translation ?? enr?.translation ?? '',
+          wordDetails: wordDetailsByPick.get(pick.id) ?? '',
+          grammar: enr ? grammarToHtml(enr.grammar) : '',
+          noteText: cue.note ?? '',
+          guidSeed: `${session.id}:${pick.id}`,
+          audioFilename: audioFile,
+          audioPath: audioPath(sid, cue.index),
+          screenshotFilename: shotFile,
+          screenshotPath: screenshotPath(sid, cue.index),
+        };
+      });
+
       await buildApkg({
         deckName,
         outPath,
@@ -115,8 +200,7 @@ export async function exportRoutes(app: FastifyInstance) {
       session.errorMessage = undefined;
       session.lastApkgPath = outPath;
       session.lastApkgName = outName;
-      // Mark each card we just shipped so the next export skips it by default.
-      for (const card of kept) card.exported = true;
+      for (const pick of toShip) pick.exported = true;
       persistSession(session, { immediate: true });
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);

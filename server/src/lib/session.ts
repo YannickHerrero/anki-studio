@@ -16,8 +16,6 @@ export type Cue = SubtitleCue & {
   audioReady: boolean;
   screenshotReady: boolean;
   rev: number;
-  /** @deprecated moves to Pick when /export is rebuilt around the pile. */
-  exported?: boolean;
 };
 
 export type WordDetails = {
