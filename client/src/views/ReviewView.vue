@@ -668,11 +668,11 @@ const picksForCurrentCue = computed(() =>
             :class="[
               tok.s && settings.underlineByStatus ? `tok--${tok.s}` : '',
               currentSelection.has(i) ? 'tok--picked' : '',
-              tok.lemma ? 'tok--clickable' : 'tok--literal',
+              tok.lemma ? 'tok--content' : 'tok--literal',
               hoveredTokenIdx === i ? 'tok--hovered' : '',
             ]"
-            @click="tok.lemma ? toggleToken(i) : null"
-            @mouseenter="tok.lemma ? (hoveredTokenIdx = i) : null"
+            @click="toggleToken(i)"
+            @mouseenter="hoveredTokenIdx = i"
             @mouseleave="hoveredTokenIdx === i ? (hoveredTokenIdx = null) : null"
           >{{ tok.t }}</span>
         </p>
@@ -1029,15 +1029,15 @@ audio {
   padding-bottom: 1px;
   margin: 1px 0;
   border-radius: 3px;
-}
-.tok--clickable {
   cursor: pointer;
   transition: background 80ms ease;
 }
-.tok--clickable:hover {
+.tok:hover {
   background: var(--bPanel);
 }
 .tok--literal {
+  /* Particles, punctuation, grammar auxiliaries — clickable but visually
+     de-emphasized so the eye still steers toward content. */
   color: var(--bMuted);
 }
 .tok--picked {
