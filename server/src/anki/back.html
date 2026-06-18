@@ -1,11 +1,7 @@
-<div class="js-card">
-  <div class="js-card__inner js-card__back">
-    {{#Screenshot}}<div class="js-screenshot">{{Screenshot}}</div>{{/Screenshot}}
+{{FrontSide}}
 
-    <div class="js-section js-section--sentence">
-      <div class="js-sentence js-sentence--back">{{furigana:Expression}}</div>
-    </div>
-
+<div class="js-card js-card--answer">
+  <div class="js-card__inner">
     {{#Translation}}
     <div class="js-section">
       <div class="js-panel">
@@ -53,5 +49,3 @@
     {{/Notes}}
   </div>
 </div>
-
-{{#Audio}}<div class="js-audio">{{Audio}}</div>{{/Audio}}

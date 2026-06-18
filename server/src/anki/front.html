@@ -1,9 +1,15 @@
 <div class="js-card">
-  <div class="js-card__inner js-card__front">
-    <div class="js-rule">
-      <span class="js-rule__bar"></span>
-      <span class="js-rule__label">Sentence</span>
+  <div class="js-card__inner">
+    {{#Screenshot}}<div class="js-screenshot">{{Screenshot}}</div>{{/Screenshot}}
+
+    <div class="js-section js-section--sentence">
+      <div class="js-rule">
+        <span class="js-rule__bar"></span>
+        <span class="js-rule__label">Sentence</span>
+      </div>
+      <div class="js-sentence">{{furigana:Expression}}</div>
     </div>
-    <div class="js-sentence">{{furigana:Expression}}</div>
   </div>
 </div>
+
+{{#Audio}}<div class="js-audio">{{Audio}}</div>{{/Audio}}
