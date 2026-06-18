@@ -19,6 +19,7 @@ import {
 import { useSessionStore } from '../stores/session';
 import { useSettingsStore } from '../stores/settings';
 import ChatPanel from '../components/ChatPanel.vue';
+import MenuDropdown from '../components/MenuDropdown.vue';
 
 const props = defineProps<{ sid: string }>();
 const router = useRouter();
@@ -347,22 +348,22 @@ function goExport() {
       </div>
       <div class="position">{{ index + 1 }} / {{ session.cards.length }}</div>
       <div class="header-actions">
-        <button class="ghost" :disabled="!canMerge" @click="mergePrev">
-          {{ merging ? 'Merging…' : 'Merge with previous' }}
-        </button>
-        <button class="ghost" @click="toggleRetime">Retime</button>
         <button class="ghost" :class="{ active: showChat }" @click="showChat = !showChat">
           Chat
         </button>
-        <button v-if="hasKnownData" class="ghost" @click="autoSkipKnown">Skip known</button>
-        <button
-          v-if="hasKnownData"
-          class="ghost"
-          :class="{ active: settings.underlineByStatus }"
-          @click="settings.underlineByStatus = !settings.underlineByStatus"
-        >
-          Underline
-        </button>
+        <MenuDropdown label="Tools">
+          <button :disabled="!canMerge" @click="mergePrev">
+            {{ merging ? 'Merging…' : 'Merge with previous' }}
+          </button>
+          <button @click="toggleRetime">Retime</button>
+          <button v-if="hasKnownData" @click="autoSkipKnown">Skip known cards</button>
+          <button
+            v-if="hasKnownData"
+            @click="settings.underlineByStatus = !settings.underlineByStatus"
+          >
+            {{ settings.underlineByStatus ? '✓ ' : '' }}Underline by status
+          </button>
+        </MenuDropdown>
         <button class="ghost" @click="goExport">Done — Export</button>
       </div>
     </header>
