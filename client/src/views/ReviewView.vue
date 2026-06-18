@@ -7,6 +7,7 @@ import {
   mergeWithPrevious,
   saveDecisions,
   streamSse,
+  updateCard,
   type CardSummary,
   type Decision,
 } from '../api';
@@ -43,6 +44,20 @@ function scheduleSave() {
   saveTimer = setTimeout(() => {
     void saveDecisions(props.sid, session.decisions);
   }, 400);
+}
+
+const noteDraft = ref('');
+let noteTimer: ReturnType<typeof setTimeout> | null = null;
+
+function scheduleNoteSave() {
+  const card = current.value;
+  if (!card) return;
+  if (noteTimer) clearTimeout(noteTimer);
+  const value = noteDraft.value;
+  noteTimer = setTimeout(() => {
+    card.note = value;
+    void updateCard(props.sid, card.index, { note: value });
+  }, 500);
 }
 
 function decide(d: Decision) {
@@ -147,6 +162,15 @@ watch(index, () => {
   }
 });
 
+watch(
+  current,
+  (card) => {
+    if (noteTimer) clearTimeout(noteTimer);
+    noteDraft.value = card?.note ?? '';
+  },
+  { immediate: true },
+);
+
 onMounted(async () => {
   window.addEventListener('keydown', onKey);
   session.sessionId = props.sid;
@@ -167,6 +191,7 @@ onMounted(async () => {
 onUnmounted(() => {
   window.removeEventListener('keydown', onKey);
   if (saveTimer) clearTimeout(saveTimer);
+  if (noteTimer) clearTimeout(noteTimer);
 });
 
 function goExport() {
@@ -250,6 +275,17 @@ function goExport() {
           controls
         />
         <p v-else class="muted">audio not ready</p>
+
+        <div class="rule">
+          <span class="rule__bar"></span><span class="rule__label">Note</span>
+        </div>
+        <textarea
+          v-model="noteDraft"
+          class="note"
+          rows="2"
+          placeholder="Add a note for this card (saved to Anki)…"
+          @input="scheduleNoteSave"
+        ></textarea>
 
         <div
           v-if="currentDecision"
@@ -431,6 +467,18 @@ button.ghost {
   margin: 0;
   border-left: 2px solid var(--accent);
   padding-left: 10px;
+}
+.note {
+  width: 100%;
+  background: var(--bPanel);
+  border: 1px solid var(--bLine);
+  border-radius: 5px;
+  padding: 8px 10px;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--bInk);
+  font-family: inherit;
+  resize: vertical;
 }
 audio {
   width: 100%;
