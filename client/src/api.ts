@@ -53,12 +53,39 @@ export async function setAudioTrack(sid: string, audioTrackIndex: number): Promi
 }
 
 export async function fetchCards(sid: string): Promise<{
+  source: 'upload' | 'youtube';
+  videoRemoved: boolean;
   cards: CardSummary[];
   decisions: Record<number, Decision>;
 }> {
   const res = await fetch(`${BASE}/session/${sid}/cards`);
   if (!res.ok) throw new Error(`fetchCards: ${res.status}`);
   return res.json();
+}
+
+export async function freeSpace(sid: string): Promise<{ freedBytes: number }> {
+  const res = await fetch(`${BASE}/session/${sid}/free-space`, { method: 'POST' });
+  if (!res.ok) throw new Error(`freeSpace failed: ${res.status} ${await res.text()}`);
+  return res.json();
+}
+
+export type RelinkResult = {
+  ok: boolean;
+  mismatch: boolean;
+  expectedDurationMs: number | null;
+  actualDurationMs: number;
+};
+
+export async function relinkVideo(sid: string, file: File): Promise<RelinkResult> {
+  const fd = new FormData();
+  fd.append('video', file, file.name);
+  const res = await fetch(`${BASE}/session/${sid}/relink`, { method: 'POST', body: fd });
+  if (!res.ok) throw new Error(`relink failed: ${res.status} ${await res.text()}`);
+  return res.json();
+}
+
+export async function relinkYoutube(sid: string, onEvent: SseHandler): Promise<void> {
+  await streamSse(`/session/${sid}/relink-youtube`, { method: 'POST' }, onEvent);
 }
 
 export async function saveDecisions(
