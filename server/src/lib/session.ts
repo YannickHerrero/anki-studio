@@ -12,10 +12,22 @@ import type { AudioStream } from './ffmpeg.js';
  * any media-processing state. Replaces the older `Card` type — there is no
  * longer a 1:1 relationship between a cue and an Anki card.
  */
+export type RefinedToken = {
+  surface: string;
+  /** Dictionary form. For particles/punctuation set equal to surface. */
+  lemma: string;
+  /** Hiragana reading. Empty string if not applicable. */
+  reading: string;
+  /** True for nouns/verbs/adjectives/adverbs/connectives, false otherwise. */
+  content: boolean;
+};
+
 export type Cue = SubtitleCue & {
   audioReady: boolean;
   screenshotReady: boolean;
   rev: number;
+  /** When set, overrides the kuromoji tokenization in /analysis. */
+  refinedTokens?: RefinedToken[];
 };
 
 export type WordDetails = {

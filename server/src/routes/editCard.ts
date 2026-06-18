@@ -33,7 +33,12 @@ export async function editCardRoutes(app: FastifyInstance) {
       return reply.code(400).send({ error: 'nothing to update' });
     }
 
-    if (typeof body.text === 'string') cue.text = body.text;
+    if (typeof body.text === 'string' && body.text !== cue.text) {
+      cue.text = body.text;
+      // Refined tokens were tied to the old sentence — drop so /analysis
+      // falls back to kuromoji until the user refines again.
+      cue.refinedTokens = undefined;
+    }
     if (typeof body.translation === 'string') cue.translation = body.translation;
     if (typeof body.note === 'string') cue.note = body.note;
 

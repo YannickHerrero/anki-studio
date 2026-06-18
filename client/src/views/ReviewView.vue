@@ -46,6 +46,10 @@ const showChat = ref(false);
 const showPile = ref(true);
 const merging = ref(false);
 const mergeError = ref<string | null>(null);
+
+const refining = ref(false);
+const refineProgress = ref<{ done: number; total: number; refined: number; failed: number } | null>(null);
+const refineError = ref<string | null>(null);
 const canMerge = computed(() => index.value > 0 && !!current.value && !merging.value);
 
 const source = ref<'upload' | 'youtube'>('upload');
@@ -289,6 +293,62 @@ async function mergePrev() {
   }
 }
 
+async function refineTokensWithLlm() {
+  if (refining.value) return;
+  if (!settings.openrouterKey.trim()) {
+    refineError.value = 'set an OpenRouter API key in Settings first';
+    return;
+  }
+  refining.value = true;
+  refineError.value = null;
+  refineProgress.value = null;
+  try {
+    await streamSse(
+      `/session/${props.sid}/refineTokens`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          openrouterKey: settings.openrouterKey.trim(),
+          model: settings.model,
+        }),
+      },
+      ({ event, data }) => {
+        const d = data as {
+          done?: number;
+          total?: number;
+          refined?: number;
+          failed?: number;
+          message?: string;
+        };
+        if (event === 'start') {
+          refineProgress.value = {
+            done: 0,
+            total: d.total ?? 0,
+            refined: 0,
+            failed: 0,
+          };
+        } else if (event === 'progress') {
+          refineProgress.value = {
+            done: d.done ?? 0,
+            total: d.total ?? refineProgress.value?.total ?? 0,
+            refined: d.refined ?? 0,
+            failed: d.failed ?? 0,
+          };
+        } else if (event === 'error') {
+          refineError.value = d.message ?? 'refine failed';
+        }
+      },
+    );
+    // Pull the new tokens.
+    await loadAnalysis();
+  } catch (err) {
+    refineError.value = err instanceof Error ? err.message : String(err);
+  } finally {
+    refining.value = false;
+  }
+}
+
 async function retime(scope: 'all' | 'from-here') {
   const deltaMs = Math.round(retimeSeconds.value * 1000);
   if (!deltaMs || !current.value) return;
@@ -486,6 +546,13 @@ const picksForCurrentCue = computed(() =>
             {{ merging ? 'Merging…' : 'Merge with previous' }}
           </button>
           <button @click="toggleRetime">Retime</button>
+          <button :disabled="refining" @click="refineTokensWithLlm">
+            {{
+              refining
+                ? `Refining ${refineProgress?.done ?? 0}/${refineProgress?.total ?? '?'}…`
+                : 'Refine tokens with LLM'
+            }}
+          </button>
           <button v-if="hasKnownData" @click="nextCueWithNewWords">
             Skip to next cue with new words
           </button>
@@ -500,6 +567,16 @@ const picksForCurrentCue = computed(() =>
       </div>
     </header>
     <p v-if="mergeError" class="err">{{ mergeError }}</p>
+    <p v-if="refineError" class="err">{{ refineError }}</p>
+    <p
+      v-if="refineProgress && !refining && (refineProgress.refined > 0 || refineProgress.failed > 0)"
+      class="hint muted small"
+    >
+      Refined {{ refineProgress.refined }} cues
+      <span v-if="refineProgress.failed > 0">
+        · {{ refineProgress.failed }} fell back to kuromoji
+      </span>
+    </p>
 
     <div v-if="showRelink" class="retime">
       <input

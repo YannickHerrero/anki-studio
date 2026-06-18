@@ -33,7 +33,15 @@ export async function analysisRoutes(app: FastifyInstance) {
 
     const words: Record<number, CardAnalysis> = {};
     for (const cue of session.cues) {
-      const tokens = await tokenize(stripFurigana(cue.text));
+      // Use LLM-refined tokens if available; otherwise tokenize with kuromoji.
+      const tokens = cue.refinedTokens
+        ? cue.refinedTokens.map((t) => ({
+            surface: t.surface,
+            lemma: t.lemma,
+            reading: t.reading,
+            content: t.content,
+          }))
+        : await tokenize(stripFurigana(cue.text));
       const out: TokenOut[] = [];
       const seen: Record<'new' | WordStatus, Set<string>> = {
         new: new Set(),

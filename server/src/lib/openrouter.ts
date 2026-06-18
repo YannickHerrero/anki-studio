@@ -328,6 +328,152 @@ function escapeHtml(s: string): string {
     .replace(/"/g, '&quot;');
 }
 
+// ----- LLM-refined tokenization -----
+
+export type RefineTokenInput = {
+  cueIndex: number;
+  sentence: string;
+  /** kuromoji's tokenization as a hint — array of `surface(pos)`. */
+  kuromoji: Array<{ surface: string; pos: string; basic: string }>;
+};
+
+export type RefineTokenOut = {
+  surface: string;
+  lemma: string;
+  reading: string;
+  content: boolean;
+};
+
+const REFINE_TOKENS_SCHEMA = {
+  type: 'object',
+  properties: {
+    cues: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          cueIndex: { type: 'integer' },
+          tokens: {
+            type: 'array',
+            items: {
+              type: 'object',
+              properties: {
+                surface: {
+                  type: 'string',
+                  description: 'Exact substring of the input sentence.',
+                },
+                lemma: {
+                  type: 'string',
+                  description:
+                    'Dictionary form of the word. For particles / punctuation, copy surface.',
+                },
+                reading: {
+                  type: 'string',
+                  description: 'Hiragana reading of the lemma. Empty string if N/A.',
+                },
+                content: {
+                  type: 'boolean',
+                  description:
+                    'true for nouns / verbs / adjectives / adverbs / proper nouns / counters that should be clickable as vocab; false for particles, auxiliaries, punctuation.',
+                },
+              },
+              required: ['surface', 'lemma', 'reading', 'content'],
+              additionalProperties: false,
+            },
+          },
+        },
+        required: ['cueIndex', 'tokens'],
+        additionalProperties: false,
+      },
+    },
+  },
+  required: ['cues'],
+  additionalProperties: false,
+};
+
+const REFINE_TOKENS_SYSTEM = `You re-tokenize Japanese subtitle sentences into a sequence of meaningful units.
+
+For each sentence:
+- The concatenation of token surfaces MUST exactly equal the input sentence (no extra characters, no missing characters).
+- Merge inflected verb / adjective forms into ONE token whose surface is the full conjugated form and lemma is the dictionary form. Examples: "食べました" → one token (lemma 食べる); "過ごしてました" → one token (lemma 過ごす); "大きかった" → one token (lemma 大きい).
+- Merge counters with their numbers: "4月" / "3時" / "5人" / "10年" → one token whose lemma equals the surface.
+- Keep proper nouns (names, places, brand names) as single tokens.
+- Particles (は / を / が / と / に / で / の / も / よ / ね / か), punctuation, and auxiliaries that didn't merge into a verb are separate tokens with content=false.
+
+You also receive kuromoji's tokenization as a hint. Use it as a starting point but correct over-segmentation, mis-tagged content, and missed proper-noun groupings. Do NOT invent words that aren't in the sentence.
+
+Return JSON matching the schema. Order: same as input. cueIndex must match the input index for each entry.`;
+
+/**
+ * Re-tokenize a batch of cues via an LLM. Returns a Map from cueIndex to
+ * RefineTokenOut[]. Cues whose response fails validation (surface
+ * concatenation doesn't match the source sentence) are absent from the
+ * returned Map — the caller should fall back to kuromoji for those.
+ */
+export async function refineTokenBatch(
+  items: RefineTokenInput[],
+  opts: EnrichOptions,
+): Promise<Map<number, RefineTokenOut[]>> {
+  const out = new Map<number, RefineTokenOut[]>();
+  if (items.length === 0) return out;
+
+  const numbered = items
+    .map(
+      (it) =>
+        `cueIndex=${it.cueIndex}\nsentence=${it.sentence}\nkuromoji=${it.kuromoji
+          .map((t) => `${t.surface}(${t.pos})`)
+          .join(' ')}`,
+    )
+    .join('\n---\n');
+
+  const body = {
+    model: opts.model,
+    messages: [
+      { role: 'system', content: REFINE_TOKENS_SYSTEM },
+      { role: 'user', content: numbered },
+    ],
+    response_format: {
+      type: 'json_schema',
+      json_schema: { name: 'refined_tokens_batch', strict: true, schema: REFINE_TOKENS_SCHEMA },
+    },
+  };
+
+  const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${opts.apiKey}`,
+      'HTTP-Referer': opts.referer ?? 'http://localhost:5173',
+      'X-Title': opts.appName ?? 'Anki Studio',
+    },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`openrouter ${res.status}: ${text.slice(0, 200)}`);
+  }
+  const json = (await res.json()) as ChatResponse;
+  const content = json.choices?.[0]?.message?.content;
+  if (!content) throw new Error('openrouter returned empty content');
+
+  const parsed = JSON.parse(content) as {
+    cues?: Array<{ cueIndex: number; tokens: RefineTokenOut[] }>;
+  };
+  const cues = Array.isArray(parsed.cues) ? parsed.cues : [];
+  const sourceByIdx = new Map(items.map((i) => [i.cueIndex, i.sentence]));
+
+  for (const entry of cues) {
+    const source = sourceByIdx.get(entry.cueIndex);
+    if (!source) continue;
+    if (!Array.isArray(entry.tokens) || entry.tokens.length === 0) continue;
+    const concat = entry.tokens.map((t) => t.surface ?? '').join('');
+    if (concat !== source) continue; // Drop — model corrupted the surface.
+    out.set(entry.cueIndex, entry.tokens);
+  }
+
+  return out;
+}
+
 export function vocabularyToHtml(items: VocabEntry[]): string {
   if (!items.length) return '';
   return items
