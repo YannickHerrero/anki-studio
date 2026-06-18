@@ -8,9 +8,15 @@ export type Token = {
   surface: string;
   /** Dictionary (base) form — what we match against the known-words list. */
   lemma: string;
+  /** Hiragana reading, when the dictionary knows one. */
+  reading: string;
   /** Whether this is a content word worth counting (noun/verb/adj/adverb). */
   content: boolean;
 };
+
+function kataToHira(s: string): string {
+  return s.replace(/[ァ-ヶ]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0x60));
+}
 
 let tokenizerPromise: Promise<kuromoji.Tokenizer<kuromoji.IpadicFeatures>> | null = null;
 
@@ -37,6 +43,7 @@ export async function tokenize(text: string): Promise<Token[]> {
       CONTENT_POS.has(t.pos) &&
       !EXCLUDE_DETAIL.has(t.pos_detail_1) &&
       HAS_JAPANESE.test(t.surface_form);
-    return { surface: t.surface_form, lemma, content };
+    const reading = t.reading && t.reading !== '*' ? kataToHira(t.reading) : '';
+    return { surface: t.surface_form, lemma, reading, content };
   });
 }
