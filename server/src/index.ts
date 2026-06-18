@@ -20,6 +20,7 @@ import { chatRoutes } from './routes/chat.js';
 import { storageRoutes } from './routes/storage.js';
 import { relinkRoutes } from './routes/relink.js';
 import { knownRoutes } from './routes/known.js';
+import { analysisRoutes } from './routes/analysis.js';
 import { rehydrateSessions } from './lib/persistence.js';
 
 async function main() {
@@ -53,6 +54,7 @@ async function main() {
   await app.register(storageRoutes);
   await app.register(relinkRoutes);
   await app.register(knownRoutes);
+  await app.register(analysisRoutes);
 
   await app.listen({ port: config.port, host: config.host });
 }
