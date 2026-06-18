@@ -6,7 +6,6 @@ import type { SubtitleCue } from './subtitles.js';
 import type { WhisperWord } from './whisper.js';
 import type { AudioStream } from './ffmpeg.js';
 
-export type Decision = 'keep' | 'skip';
 
 /**
  * A subtitle line in a session: the parsed text + ingest-time timing PLUS
@@ -81,8 +80,6 @@ export type Session = {
   audioStreams?: AudioStream[];
   audioTrackIndex?: number;
   whisperWords?: WhisperWord[];
-  /** @deprecated removed in the next commit when /decisions is dropped. */
-  decisions?: Record<number, Decision>;
   status: ProcessingStatus;
   errorMessage?: string;
   lastApkgPath?: string;
@@ -121,7 +118,6 @@ export async function createSession(source: SessionSource = 'upload'): Promise<S
     subtitleOriginalName: '',
     cues: [],
     picks: [],
-    decisions: {},
     status: 'pending',
   };
   sessions.set(id, session);

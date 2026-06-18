@@ -50,15 +50,12 @@ export async function exportRoutes(app: FastifyInstance) {
       return reply.code(400).send({ error: 'openrouterKey and model are required' });
     }
 
-    const allKept = session.cues.filter((c) => session.decisions?.[c.index] === 'keep');
-    const kept = body.includeExported
-      ? allKept
-      : allKept.filter((c) => !c.exported);
+    // Pile-based export. Task 54 rebuilds this to ship one note per pick;
+    // for now the keep-style code path is gone and we surface a clear error.
+    const kept: typeof session.cues = [];
     if (kept.length === 0) {
-      return reply.code(400).send({
-        error: body.includeExported
-          ? 'no cards marked as keep'
-          : 'no new kept cards — review more or pass includeExported to re-export',
+      return reply.code(501).send({
+        error: 'export not implemented for pile model yet — coming in task 54',
       });
     }
 

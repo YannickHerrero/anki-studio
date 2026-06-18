@@ -61,10 +61,6 @@ export async function mergeRoutes(app: FastifyInstance) {
     ]);
 
     session.cues.splice(pos - 1, 2, merged);
-    if (session.decisions) {
-      delete session.decisions[prev.index];
-      delete session.decisions[curr.index];
-    }
     // Picks made from either of the merged cues become picks of the new merged cue.
     for (const pick of session.picks) {
       if (pick.cueIndex === prev.index || pick.cueIndex === curr.index) {

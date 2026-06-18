@@ -63,8 +63,7 @@ export async function refineSplitsRoutes(app: FastifyInstance) {
       }
 
       session.cues = cuesFromSubtitleCues(newCues);
-      // Decisions and picks referenced the old cue indices and no longer make sense.
-      session.decisions = {};
+      // Picks referenced the old cue indices and no longer make sense.
       session.picks = [];
       persistSession(session, { immediate: true });
       write('done', { cueCount: newCues.length });
