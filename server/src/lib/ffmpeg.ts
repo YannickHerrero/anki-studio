@@ -1,3 +1,4 @@
+import path from 'node:path';
 import { execa } from 'execa';
 import { config } from '../config.js';
 
@@ -123,6 +124,87 @@ export async function extractFullAudio(
     ],
     { stdout: 'ignore' },
   );
+}
+
+export type ChunkInfo = {
+  /** 0-indexed chunk number. */
+  index: number;
+  /** Path to the chunked video file. */
+  videoPath: string;
+  /** Inclusive start offset in the SOURCE video, in milliseconds. */
+  sourceStartMs: number;
+  /** Exclusive end offset in the SOURCE video, in milliseconds. */
+  sourceEndMs: number;
+  /** Total chunks the source was split into. */
+  totalChunks: number;
+};
+
+/**
+ * Split a long video into roughly-equal chunks of `chunkMs` with `overlapMs`
+ * of overlap between consecutive chunks (except at the head/tail). Uses
+ * `-c copy` so cuts happen at the nearest keyframe — fast (no re-encode),
+ * but with up to a few seconds of inaccuracy. The overlap is meant to cover
+ * those cuts so no sentence falls in a gap.
+ *
+ * If the source is shorter than `chunkMs`, returns a single chunk
+ * pointing at the source path (no split).
+ */
+export async function splitVideoIntoChunks(
+  srcPath: string,
+  outDir: string,
+  durationMs: number,
+  chunkMs: number,
+  overlapMs: number,
+): Promise<ChunkInfo[]> {
+  if (durationMs <= chunkMs) {
+    return [
+      {
+        index: 0,
+        videoPath: srcPath,
+        sourceStartMs: 0,
+        sourceEndMs: durationMs,
+        totalChunks: 1,
+      },
+    ];
+  }
+
+  const totalChunks = Math.ceil(durationMs / chunkMs);
+  const chunks: ChunkInfo[] = [];
+
+  for (let i = 0; i < totalChunks; i++) {
+    const rawStart = i * chunkMs;
+    // Overlap is applied on the START side of each chunk after the first one,
+    // so the user can recover sentences cut at the previous chunk's end.
+    const start = i === 0 ? 0 : Math.max(0, rawStart - overlapMs);
+    const end = Math.min(durationMs, (i + 1) * chunkMs);
+    const ext = path.extname(srcPath) || '.mp4';
+    const out = path.join(outDir, `chunk_${i}${ext}`);
+
+    await execa(
+      config.ffmpegPath,
+      [
+        '-y',
+        '-loglevel', 'error',
+        '-ss', msToSeconds(start),
+        '-to', msToSeconds(end),
+        '-i', srcPath,
+        '-c', 'copy',
+        '-avoid_negative_ts', 'make_zero',
+        out,
+      ],
+      { stdout: 'ignore' },
+    );
+
+    chunks.push({
+      index: i,
+      videoPath: out,
+      sourceStartMs: start,
+      sourceEndMs: end,
+      totalChunks,
+    });
+  }
+
+  return chunks;
 }
 
 export async function extractAudio(

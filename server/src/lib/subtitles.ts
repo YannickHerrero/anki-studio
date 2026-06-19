@@ -3,6 +3,39 @@ import path from 'node:path';
 import { parse as parseSubs } from 'subsrt-ts';
 import { parseAss } from './ass.js';
 
+/**
+ * Take a set of subtitle cues whose timings are in SOURCE-video time and
+ * return the subset that falls within [startMs, endMs), with their timings
+ * shifted to be relative to the chunk's start. Index is renumbered from 0.
+ * Used when splitting a long upload into multiple chunk sessions.
+ */
+export function filterCuesToRange(
+  cues: Array<{ index: number; startMs: number; endMs: number; text: string; translation?: string; note?: string }>,
+  startMs: number,
+  endMs: number,
+): Array<{ index: number; startMs: number; endMs: number; text: string; translation?: string; note?: string }> {
+  const out = [];
+  let idx = 0;
+  for (const c of cues) {
+    // Include a cue if it starts before the chunk ends and ends after the
+    // chunk starts — i.e. it overlaps the chunk's time range at all.
+    if (c.startMs >= endMs) break;
+    if (c.endMs <= startMs) continue;
+    const s = Math.max(0, c.startMs - startMs);
+    const e = Math.min(endMs, c.endMs) - startMs;
+    if (e <= s) continue;
+    out.push({
+      index: idx++,
+      startMs: s,
+      endMs: e,
+      text: c.text,
+      translation: c.translation,
+      note: c.note,
+    });
+  }
+  return out;
+}
+
 export type SubtitleCue = {
   index: number;
   startMs: number;
