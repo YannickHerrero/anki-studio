@@ -1,5 +1,9 @@
 <script setup lang="ts">
-import { RouterView, RouterLink } from 'vue-router';
+import { computed } from 'vue';
+import { RouterView, RouterLink, useRoute } from 'vue-router';
+
+const route = useRoute();
+const fullWidth = computed(() => route.meta.fullWidth === true);
 </script>
 
 <template>
@@ -14,7 +18,7 @@ import { RouterView, RouterLink } from 'vue-router';
       <RouterLink to="/settings">Settings</RouterLink>
     </nav>
   </header>
-  <main class="app-main">
+  <main class="app-main" :class="{ 'app-main--full': fullWidth }">
     <RouterView />
   </main>
 </template>
@@ -50,5 +54,9 @@ nav a.router-link-active {
   max-width: 980px;
   margin: 0 auto;
   padding: 32px 28px;
+}
+.app-main--full {
+  max-width: none;
+  padding: 24px 28px;
 }
 </style>

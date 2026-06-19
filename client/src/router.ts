@@ -20,6 +20,7 @@ export const router = createRouter({
       name: 'review',
       component: () => import('./views/ReviewView.vue'),
       props: true,
+      meta: { fullWidth: true },
     },
     {
       path: '/session/:sid/export',
