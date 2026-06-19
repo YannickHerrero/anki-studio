@@ -32,11 +32,18 @@ type SessionSummary = {
   needsTranscription: boolean;
   audioStreams: AudioStream[];
   audioTrackIndex: number | null;
-  /** Index in [0, totalChunks). 0 / 1 for a non-split upload. */
+  /** Index in [0, totalChunks). 0 for a non-split upload. */
   chunkIndex: number;
+  /** 1 for a non-split upload. */
   totalChunks: number;
   title: string;
 };
+
+function chunkTitleFor(baseTitle: string, chunkIndex: number, totalChunks: number): string {
+  // Plain title for non-split uploads. For splits we keep the title clean and
+  // let the UI render the part-of-N badge in front.
+  return totalChunks === 1 ? baseTitle : baseTitle;
+}
 
 async function setupSession(args: {
   videoPath: string;
@@ -57,6 +64,10 @@ async function setupSession(args: {
   session.videoPath = dst;
   session.videoOriginalName = args.videoOriginalName;
   session.title = args.title;
+  if (args.totalChunks > 1) {
+    session.chunkIndex = args.chunkIndex;
+    session.totalChunks = args.totalChunks;
+  }
   session.audioStreams = args.audioStreams;
   if (args.audioTrackIndex != null) session.audioTrackIndex = args.audioTrackIndex;
 
@@ -186,10 +197,7 @@ export async function uploadRoutes(app: FastifyInstance) {
       const chunkCues = parsedCues
         ? filterCuesToRange(parsedCues, chunk.sourceStartMs, chunk.sourceEndMs)
         : null;
-      const title =
-        chunk.totalChunks === 1
-          ? baseTitle
-          : `${baseTitle} — part ${chunk.index + 1}/${chunk.totalChunks}`;
+      const title = chunkTitleFor(baseTitle, chunk.index, chunk.totalChunks);
       summaries.push(
         await setupSession({
           videoPath: chunk.videoPath,

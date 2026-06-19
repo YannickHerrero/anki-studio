@@ -16,6 +16,8 @@ type SessionSummary = {
   pileCount?: number;
   exportedCount?: number;
   pendingExportCount?: number;
+  chunkIndex?: number;
+  totalChunks?: number;
   /** Deprecated — server stopped emitting these once decisions went away. */
   totalCards?: number;
   keptCount?: number;
@@ -115,6 +117,13 @@ onMounted(load);
         <div class="item__main">
           <div class="item__head">
             <span class="tag" :class="`tag--${s.source}`">{{ s.source }}</span>
+            <span
+              v-if="s.totalChunks && s.totalChunks > 1"
+              class="tag tag--part"
+              :title="`Part ${(s.chunkIndex ?? 0) + 1} of ${s.totalChunks}`"
+            >
+              [{{ (s.chunkIndex ?? 0) + 1 }}/{{ s.totalChunks }}]
+            </span>
             <span class="item__title">{{ s.title }}</span>
           </div>
           <div class="item__stats">
@@ -238,6 +247,14 @@ h1 {
 .tag--youtube {
   background: var(--accentSoft);
   color: var(--accent);
+}
+.tag--part {
+  background: var(--bPanel);
+  color: var(--pageInk);
+  font-family: ui-monospace, monospace;
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  text-transform: none;
 }
 .item__title {
   font-weight: 500;

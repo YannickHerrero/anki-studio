@@ -13,6 +13,8 @@ function summarize(s: ReturnType<typeof allSessions>[number]) {
     id: s.id,
     source: s.source,
     title: s.title ?? s.videoOriginalName ?? s.youtubeUrl ?? '(untitled)',
+    chunkIndex: s.chunkIndex,
+    totalChunks: s.totalChunks,
     youtubeUrl: s.youtubeUrl,
     status: s.status,
     errorMessage: s.errorMessage,

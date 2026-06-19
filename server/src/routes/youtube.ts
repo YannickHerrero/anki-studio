@@ -114,10 +114,12 @@ export async function youtubeRoutes(app: FastifyInstance) {
         const session = await createSession('youtube');
         createdSessions.push(session);
         session.youtubeUrl = url;
-        session.title =
-          chunk.totalChunks === 1
-            ? meta.title
-            : `${meta.title} — part ${chunk.index + 1}/${chunk.totalChunks}`;
+        // Keep the title clean — the UI renders the part-of-N badge in front.
+        session.title = meta.title;
+        if (chunk.totalChunks > 1) {
+          session.chunkIndex = chunk.index;
+          session.totalChunks = chunk.totalChunks;
+        }
         session.videoOriginalName = path.basename(chunk.videoPath);
 
         // Move chunk video into the new session dir.

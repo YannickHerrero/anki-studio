@@ -74,6 +74,10 @@ export type Session = {
   updatedAt: number;
   source: SessionSource;
   title?: string;
+  /** When the original upload/youtube was split, the 0-indexed chunk number. */
+  chunkIndex?: number;
+  /** Total chunks the original was split into. Absent or 1 means no split. */
+  totalChunks?: number;
   youtubeUrl?: string;
   videoPath: string;
   videoOriginalName: string;

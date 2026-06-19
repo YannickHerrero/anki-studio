@@ -17,6 +17,8 @@ type SessionSummary = {
   pendingExportCount: number;
   hasExport: boolean;
   videoRemoved: boolean;
+  chunkIndex?: number;
+  totalChunks?: number;
 };
 
 const recent = ref<SessionSummary[]>([]);
@@ -94,6 +96,12 @@ onMounted(load);
         >
           <div class="recent__card__row">
             <span class="tag" :class="`tag--${s.source}`">{{ s.source }}</span>
+            <span
+              v-if="s.totalChunks && s.totalChunks > 1"
+              class="tag tag--part"
+            >
+              [{{ (s.chunkIndex ?? 0) + 1 }}/{{ s.totalChunks }}]
+            </span>
             <span class="recent__card__title">{{ s.title }}</span>
           </div>
           <div class="recent__card__meta">
@@ -289,6 +297,15 @@ p {
 .tag--youtube {
   background: var(--accentSoft);
   color: var(--accent);
+}
+.tag--part {
+  background: var(--bPanel);
+  color: var(--pageInk);
+  font-family: ui-monospace, monospace;
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  text-transform: none;
+  font-weight: 600;
 }
 .warn-tag,
 .err-tag {
