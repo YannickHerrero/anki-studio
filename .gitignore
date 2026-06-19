@@ -13,3 +13,6 @@ data/
 # editor
 .vscode/
 .idea/
+
+# claude local instructions
+.claude/
