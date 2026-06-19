@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { pickId, requireSession, type Pick } from '../lib/session.js';
 import { persistSession } from '../lib/persistence.js';
+import { loadKnown, saveKnown, type WordStatus } from '../lib/knownWords.js';
 
 type AddBody = {
   cueIndex?: number;
@@ -68,10 +69,35 @@ export async function pickRoutes(app: FastifyInstance) {
     }
 
     persistSession(session);
+
+    // Tag freshly-picked lemmas as 'created' in the global known store so
+    // future cues stop flagging them as new. Existing entries (Anki-derived
+    // or manually marked known/ignored/learning) win — picks never downgrade.
+    const statusChanges: Record<string, WordStatus> = {};
+    if (added.length > 0) {
+      const store = await loadKnown();
+      let mutated = false;
+      for (const p of added) {
+        if (store.words[p.lemma]) continue;
+        store.words[p.lemma] = {
+          status: 'created',
+          manual: true,
+          reading: p.reading || undefined,
+        };
+        statusChanges[p.lemma] = 'created';
+        mutated = true;
+      }
+      if (mutated) {
+        store.updatedAt = Date.now();
+        await saveKnown(store);
+      }
+    }
+
     return {
       addedCount: added.length,
       added: added.map((p) => ({ id: p.id, lemma: p.lemma, surface: p.surface })),
       pileCount: session.picks.length,
+      statusChanges,
     };
   });
 
@@ -80,8 +106,28 @@ export async function pickRoutes(app: FastifyInstance) {
     const session = requireSession(sid);
     const i = session.picks.findIndex((p) => p.id === id);
     if (i < 0) return reply.code(404).send({ error: 'unknown pick' });
-    session.picks.splice(i, 1);
+    const [removed] = session.picks.splice(i, 1);
     persistSession(session);
-    return { ok: true, pileCount: session.picks.length };
+
+    // Clear the 'created' tag we set on add — but only if no other pick on
+    // this (or any) session still references the lemma, and only if the
+    // entry is the one we set (manual + created). Anything else (known,
+    // learning, Anki-sync derived) is left alone.
+    const statusChanges: Record<string, WordStatus | null> = {};
+    if (removed) {
+      const stillPicked = session.picks.some((p) => p.lemma === removed.lemma);
+      if (!stillPicked) {
+        const store = await loadKnown();
+        const entry = store.words[removed.lemma];
+        if (entry?.status === 'created' && entry.manual) {
+          delete store.words[removed.lemma];
+          store.updatedAt = Date.now();
+          await saveKnown(store);
+          statusChanges[removed.lemma] = null;
+        }
+      }
+    }
+
+    return { ok: true, pileCount: session.picks.length, statusChanges };
   });
 }
