@@ -19,6 +19,8 @@ import {
   type EditProposal,
   type ManualWordStatus,
   type PickTokenInput,
+  type TokenStatus,
+  type WordStatus,
 } from '../api';
 import { useSessionStore } from '../stores/session';
 import { useSettingsStore } from '../stores/settings';
@@ -209,7 +211,8 @@ async function commitPicks() {
   });
   if (tokens.length === 0) return;
   try {
-    await addPicks(props.sid, cue.index, tokens);
+    const result = await addPicks(props.sid, cue.index, tokens);
+    applyStatusChanges(result.statusChanges);
     clearCueSelection(cue.index);
     await refreshPicks();
     next();
@@ -222,7 +225,8 @@ async function removeFromPile(pickId: string) {
   const before = session.picks.length;
   session.picks = session.picks.filter((p) => p.id !== pickId);
   try {
-    await removePick(props.sid, pickId);
+    const result = await removePick(props.sid, pickId);
+    applyStatusChanges(result.statusChanges);
   } catch (err) {
     // Best-effort: refetch the truth if delete failed.
     void refreshPicks();
@@ -297,6 +301,43 @@ async function markHovered(status: ManualWordStatus) {
     error.value = err instanceof Error ? err.message : String(err);
     void loadAnalysis();
   }
+}
+
+/**
+ * Apply a batch of lemma → status changes (or null to revert to 'new')
+ * across every cue's analysis row. Used after pile add/remove so picked
+ * words drop out of `newCount` and pick up the `tok--created` underline
+ * without a server round-trip.
+ */
+function applyStatusChanges(changes: Record<string, WordStatus | null>) {
+  if (Object.keys(changes).length === 0) return;
+  const next: Record<number, CardAnalysis> = {};
+  for (const [k, row] of Object.entries(analysis.value)) {
+    const tokens = row.tokens.map((t) => {
+      if (!t.lemma || !(t.lemma in changes)) return t;
+      const status: TokenStatus = changes[t.lemma] ?? 'new';
+      return { ...t, s: status };
+    });
+    const seen: Record<TokenStatus, Set<string>> = {
+      new: new Set<string>(),
+      known: new Set<string>(),
+      learning: new Set<string>(),
+      created: new Set<string>(),
+      ignored: new Set<string>(),
+    };
+    for (const t of tokens) {
+      if (!t.lemma || !t.s) continue;
+      seen[t.s].add(t.lemma);
+    }
+    next[Number(k)] = {
+      newCount: seen.new.size,
+      learningCount: seen.learning.size,
+      knownCount: seen.known.size,
+      createdCount: seen.created.size,
+      tokens,
+    };
+  }
+  analysis.value = next;
 }
 
 function applyStatusLocally(lemma: string, status: ManualWordStatus) {

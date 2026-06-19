@@ -116,7 +116,13 @@ export async function addPicks(
   sid: string,
   cueIndex: number,
   tokens: PickTokenInput[],
-): Promise<{ addedCount: number; added: Array<{ id: string; lemma: string; surface: string }>; pileCount: number }> {
+): Promise<{
+  addedCount: number;
+  added: Array<{ id: string; lemma: string; surface: string }>;
+  pileCount: number;
+  /** Lemmas whose known-store status changed (e.g. flipped to 'created'). */
+  statusChanges: Record<string, WordStatus>;
+}> {
   const res = await fetch(`${BASE}/session/${sid}/pick`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -126,7 +132,11 @@ export async function addPicks(
   return res.json();
 }
 
-export async function removePick(sid: string, pickId: string): Promise<{ pileCount: number }> {
+export async function removePick(sid: string, pickId: string): Promise<{
+  pileCount: number;
+  /** Lemmas whose known-store status changed (null = entry removed → reverts to 'new'). */
+  statusChanges: Record<string, WordStatus | null>;
+}> {
   const res = await fetch(`${BASE}/session/${sid}/pick/${encodeURIComponent(pickId)}`, {
     method: 'DELETE',
   });
