@@ -32,6 +32,15 @@ const processedDone = ref(0);
 const processedTotal = ref(0);
 const tokenizeDone = ref(0);
 const tokenizeTotal = ref(0);
+const splitInfo = ref<{ total: number; durationMs: number } | null>(null);
+
+function formatDuration(ms: number): string {
+  const totalSec = Math.round(ms / 1000);
+  const h = Math.floor(totalSec / 3600);
+  const m = Math.floor((totalSec % 3600) / 60);
+  if (h > 0) return `${h}h ${m}m`;
+  return `${m}m`;
+}
 
 const URL_RE = /^https?:\/\/(www\.|m\.|music\.)?(youtube\.com\/(watch\?[^#]*\bv=[\w-]{11}|shorts\/[\w-]{11})|youtu\.be\/[\w-]{11})/;
 const looksLikeYoutube = computed(() => URL_RE.test(url.value.trim()));
@@ -52,6 +61,8 @@ async function go() {
   videoTitle.value = '';
 
   let sid: string | null = null;
+  let splitTotal = 0;
+  let splitDurationMs = 0;
 
   try {
     // 1. Download + extract audio
@@ -70,14 +81,37 @@ async function go() {
           pct?: number;
           stage?: string;
           message?: string;
+          split?: boolean;
+          totalChunks?: number;
+          durationMs?: number;
+          chunk?: number;
+          of?: number;
         };
-        if (event === 'session') sid = d.sessionId ?? null;
-        else if (event === 'meta') videoTitle.value = d.title ?? '';
-        else if (event === 'download') downloadPct.value = d.pct ?? 0;
-        else if (event === 'audio') audioStage.value = (d.stage as 'extracting' | 'done') ?? '';
-        else if (event === 'error') throw new Error(d.message ?? 'download failed');
+        if (event === 'meta') {
+          videoTitle.value = d.title ?? '';
+          splitDurationMs = d.durationMs ?? 0;
+        } else if (event === 'split') {
+          splitDurationMs = d.durationMs ?? splitDurationMs;
+        } else if (event === 'download') downloadPct.value = d.pct ?? 0;
+        else if (event === 'audio') {
+          audioStage.value = (d.stage as 'extracting' | 'done') ?? '';
+        } else if (event === 'done') {
+          sid = d.sessionId ?? null;
+          if (d.split) splitTotal = d.totalChunks ?? 0;
+        } else if (event === 'error') throw new Error(d.message ?? 'download failed');
       },
     );
+
+    // Long video → server fanned out into N sessions. Land on /sessions
+    // so the user can pick which chunk to process first.
+    if (splitTotal > 1) {
+      splitInfo.value = { total: splitTotal, durationMs: splitDurationMs };
+      setTimeout(() => {
+        router.replace({ name: 'sessions' });
+      }, 1600);
+      return;
+    }
+
     if (!sid) throw new Error('no session id from /youtube');
     session.sessionId = sid;
 
@@ -282,6 +316,14 @@ const overallPct = computed(() => {
       <div class="stage">{{ phaseLabel }}</div>
     </div>
 
+    <div v-if="splitInfo" class="split-banner">
+      <strong>Split into {{ splitInfo.total }} sessions</strong>
+      <span class="muted small">
+        — {{ formatDuration(splitInfo.durationMs) }} video, ~25 min per chunk.
+        Redirecting to your sessions list…
+      </span>
+    </div>
+
     <p v-if="error" class="err">{{ error }}</p>
   </section>
 </template>
@@ -385,5 +427,26 @@ input {
   color: #c83a3a;
   font-size: 13px;
   margin-top: 16px;
+}
+.split-banner {
+  margin-top: 20px;
+  padding: 12px 16px;
+  background: var(--accentSoft);
+  border: 1px solid var(--accent);
+  border-radius: 6px;
+  color: var(--pageInk);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: baseline;
+}
+.split-banner strong {
+  color: var(--accent);
+}
+.muted {
+  color: var(--pageMuted);
+}
+.small {
+  font-size: 12px;
 }
 </style>

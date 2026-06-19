@@ -12,9 +12,14 @@ type SessionSummary = {
   errorMessage?: string;
   createdAt: number;
   updatedAt: number;
-  totalCards: number;
-  keptCount: number;
-  skippedCount: number;
+  cueCount?: number;
+  pileCount?: number;
+  exportedCount?: number;
+  pendingExportCount?: number;
+  /** Deprecated — server stopped emitting these once decisions went away. */
+  totalCards?: number;
+  keptCount?: number;
+  skippedCount?: number;
   hasExport: boolean;
   videoRemoved: boolean;
 };
@@ -75,10 +80,6 @@ async function free(s: SessionSummary) {
   }
 }
 
-function progress(s: SessionSummary): number {
-  if (!s.totalCards) return 0;
-  return Math.round(((s.keptCount + s.skippedCount) / s.totalCards) * 100);
-}
 
 function relativeTime(ts: number): string {
   const diff = Date.now() - ts;
@@ -117,35 +118,46 @@ onMounted(load);
             <span class="item__title">{{ s.title }}</span>
           </div>
           <div class="item__stats">
-            <span>{{ s.totalCards }} cards</span>
-            <span class="accent">{{ s.keptCount }} keep</span>
-            <span class="danger">{{ s.skippedCount }} skip</span>
-            <span>{{ progress(s) }}% reviewed</span>
+            <span>{{ s.cueCount ?? 0 }} cues</span>
+            <span class="accent" v-if="(s.pileCount ?? 0) > 0">{{ s.pileCount }} in pile</span>
+            <span class="accent" v-if="(s.pendingExportCount ?? 0) > 0">
+              {{ s.pendingExportCount }} to export
+            </span>
             <span class="muted">· {{ relativeTime(s.updatedAt) }}</span>
             <span v-if="s.videoRemoved" class="muted">· video freed</span>
             <span v-if="s.status === 'error'" class="danger">· {{ s.errorMessage ?? 'error' }}</span>
-            <span v-else-if="s.status !== 'ready' && s.totalCards === 0" class="muted">
-              · {{ s.status }}
+            <span v-else-if="s.status !== 'ready'" class="muted">
+              · needs processing
             </span>
           </div>
         </div>
         <div class="item__actions">
+          <!-- Sessions that haven't finished /process land in Processing so the
+               pipeline (transcribe / cut clips / translate / refineTokens)
+               runs. After that they're 'ready' and we go to Review. -->
           <RouterLink
-            v-if="s.totalCards > 0"
+            v-if="s.status !== 'ready'"
+            class="ghost primary"
+            :to="{ name: 'processing', params: { sid: s.id } }"
+          >
+            Process
+          </RouterLink>
+          <RouterLink
+            v-else
             class="ghost"
             :to="{ name: 'review', params: { sid: s.id } }"
           >
             Review
           </RouterLink>
           <RouterLink
-            v-if="s.keptCount > 0"
+            v-if="(s.pileCount ?? 0) > 0"
             class="ghost"
             :to="{ name: 'export', params: { sid: s.id } }"
           >
             Export
           </RouterLink>
           <button
-            v-if="!s.videoRemoved && s.totalCards > 0"
+            v-if="!s.videoRemoved && s.status === 'ready'"
             type="button"
             class="ghost"
             :disabled="freeing === s.id"

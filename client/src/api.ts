@@ -45,6 +45,20 @@ export type UploadResult = {
   needsTranscription: boolean;
   audioStreams: AudioStream[];
   audioTrackIndex: number | null;
+  /** Present when the upload was split (or even when it wasn't — length == 1). */
+  sessions?: Array<{
+    sessionId: string;
+    cueCount: number;
+    needsTranscription: boolean;
+    audioStreams: AudioStream[];
+    audioTrackIndex: number | null;
+    chunkIndex: number;
+    totalChunks: number;
+    title: string;
+  }>;
+  split?: boolean;
+  totalChunks?: number;
+  durationMs?: number;
 };
 
 export async function upload(video: File, subtitle: File | null): Promise<UploadResult> {

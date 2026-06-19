@@ -56,6 +56,8 @@ function onDrop(e: DragEvent) {
   }
 }
 
+const splitInfo = ref<{ total: number; durationMs: number } | null>(null);
+
 async function submit() {
   if (!canSubmit.value || !video.value) return;
   busy.value = true;
@@ -64,6 +66,20 @@ async function submit() {
     const result = await upload(video.value, subtitle.value);
     session.sessionId = result.sessionId;
     session.cueCount = result.cueCount;
+
+    // Long video → server fanned out into N sibling sessions. Land on the
+    // Sessions list so the user can pick which chunk to process first.
+    if (result.split && (result.totalChunks ?? 1) > 1) {
+      splitInfo.value = {
+        total: result.totalChunks ?? 1,
+        durationMs: result.durationMs ?? 0,
+      };
+      // Brief pause so the user sees the feedback, then redirect.
+      setTimeout(() => {
+        router.push({ name: 'sessions' });
+      }, 1600);
+      return;
+    }
 
     // Multi-track file with no clear Japanese — ask the user before continuing.
     if (result.audioStreams.length > 1 && result.audioTrackIndex === null) {
@@ -83,6 +99,14 @@ async function submit() {
   } finally {
     busy.value = false;
   }
+}
+
+function formatDuration(ms: number): string {
+  const totalSec = Math.round(ms / 1000);
+  const h = Math.floor(totalSec / 3600);
+  const m = Math.floor((totalSec % 3600) / 60);
+  if (h > 0) return `${h}h ${m}m`;
+  return `${m}m`;
 }
 
 function describeTrack(t: AudioStream): string {
@@ -185,6 +209,14 @@ function formatBytes(n: number): string {
         {{ busy ? 'Uploading…' : 'Process' }}
       </button>
       <span v-if="error" class="err">{{ error }}</span>
+    </div>
+
+    <div v-if="splitInfo" class="split-banner">
+      <strong>Split into {{ splitInfo.total }} sessions</strong>
+      <span class="muted small">
+        — {{ formatDuration(splitInfo.durationMs) }} video, ~25 min per chunk.
+        Redirecting to your sessions list…
+      </span>
     </div>
 
     <div v-if="pendingSessionId" class="track-picker">
@@ -349,6 +381,21 @@ button:disabled {
 }
 .tracks__desc {
   flex: 1;
+}
+.split-banner {
+  margin-top: 20px;
+  padding: 12px 16px;
+  background: var(--accentSoft);
+  border: 1px solid var(--accent);
+  border-radius: 6px;
+  color: var(--pageInk);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: baseline;
+}
+.split-banner strong {
+  color: var(--accent);
 }
 .align-toggle {
   display: flex;
