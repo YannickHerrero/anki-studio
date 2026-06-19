@@ -24,6 +24,8 @@ import { useSessionStore } from '../stores/session';
 import { useSettingsStore } from '../stores/settings';
 import ChatPanel from '../components/ChatPanel.vue';
 import MenuDropdown from '../components/MenuDropdown.vue';
+import ResizeHandle from '../components/ResizeHandle.vue';
+import { useResizable } from '../composables/useResizable';
 
 const props = defineProps<{ sid: string }>();
 const router = useRouter();
@@ -46,6 +48,58 @@ const showChat = ref(false);
 const showPile = ref(true);
 const merging = ref(false);
 const mergeError = ref<string | null>(null);
+
+// Resizable 3-pane layout. The pane root drives the max bounds so the
+// columns stay within the available width / height as the viewport changes.
+const paneRoot = ref<HTMLElement | null>(null);
+const paneWidth = ref(1200);
+const paneHeight = ref(720);
+const HANDLE_PX = 6;
+const MIN_LEFT_PX = 480;
+const MIN_RIGHT_PX = 320;
+const MIN_PILE_PX = 120;
+const MIN_CHAT_PX = 200;
+
+const { size: leftPx, dragging: hDragging, start: startHResize, clampToMax: clampLeft } = useResizable({
+  key: 'review.leftPx',
+  axis: 'x',
+  min: MIN_LEFT_PX,
+  max: () => Math.max(MIN_LEFT_PX, paneWidth.value - MIN_RIGHT_PX - HANDLE_PX),
+  initial: 900,
+});
+
+const { size: pilePx, dragging: vDragging, start: startVResize, clampToMax: clampPile } = useResizable({
+  key: 'review.pilePx',
+  axis: 'y',
+  min: MIN_PILE_PX,
+  max: () => Math.max(MIN_PILE_PX, paneHeight.value - MIN_CHAT_PX - HANDLE_PX),
+  initial: 280,
+});
+
+const gridCols = computed(() => {
+  if (!showPile.value && !showChat.value) return '1fr';
+  return `${leftPx.value}px ${HANDLE_PX}px 1fr`;
+});
+const gridRows = computed(() => {
+  if (showPile.value && showChat.value) {
+    return `${pilePx.value}px ${HANDLE_PX}px 1fr`;
+  }
+  return '1fr';
+});
+
+let paneObserver: ResizeObserver | null = null;
+function attachPaneObserver() {
+  if (!paneRoot.value) return;
+  paneObserver = new ResizeObserver((entries) => {
+    for (const entry of entries) {
+      paneWidth.value = entry.contentRect.width;
+      paneHeight.value = entry.contentRect.height;
+    }
+    clampLeft();
+    clampPile();
+  });
+  paneObserver.observe(paneRoot.value);
+}
 
 const refining = ref(false);
 const refineProgress = ref<{ done: number; total: number; refined: number; failed: number } | null>(null);
@@ -406,6 +460,7 @@ watch(
 
 onMounted(async () => {
   window.addEventListener('keydown', onKey);
+  attachPaneObserver();
   session.sessionId = props.sid;
   try {
     const data = await fetchCards(props.sid);
@@ -438,6 +493,7 @@ onMounted(async () => {
 onUnmounted(() => {
   window.removeEventListener('keydown', onKey);
   if (noteTimer) clearTimeout(noteTimer);
+  paneObserver?.disconnect();
 });
 
 function toggleRetime() {
@@ -525,7 +581,7 @@ const picksForCurrentCue = computed(() =>
 </script>
 
 <template>
-  <section class="review" :class="{ 'review--wide': showChat || showPile }">
+  <section class="review">
     <header class="review__header">
       <div class="status-cluster">
         <div class="counts">
@@ -658,8 +714,12 @@ const picksForCurrentCue = computed(() =>
       <div v-if="retimeError" class="err">{{ retimeError }}</div>
     </div>
 
-    <div class="review__main" :class="{ 'review__main--side': showChat || showPile }">
-    <div class="review__col">
+    <div
+      ref="paneRoot"
+      class="review__pane"
+      :style="{ gridTemplateColumns: gridCols }"
+    >
+    <div class="review__left">
     <p v-if="loading" class="muted">Loading…</p>
     <p v-else-if="error" class="err">{{ error }}</p>
     <p v-else-if="!current" class="muted">No cards.</p>
@@ -736,29 +796,49 @@ const picksForCurrentCue = computed(() =>
     </article>
     </div>
 
-    <aside v-if="showPile" class="review__side">
-      <h3>Pile <span class="muted small">({{ session.pileCount }})</span></h3>
-      <p v-if="session.picks.length === 0" class="muted small">
-        Empty — click words in any sentence and press A.
-      </p>
-      <ul v-else class="pile-list">
-        <li v-for="p in session.picks" :key="p.id" class="pile-item">
-          <button class="pile-item__head" @click="index = session.cards.findIndex((c) => c.index === p.cueIndex)">
-            <!-- Surface is what shows on the card front, so display it primary. -->
-            <span class="pile-item__surface">{{ p.surface }}</span>
-            <span v-if="p.surface !== p.lemma" class="pile-item__lemma muted small">→ {{ p.lemma }}</span>
-          </button>
-          <span class="pile-item__meta muted small">cue #{{ p.cueIndex }}</span>
-          <span v-if="p.exported" class="pile-item__exported small">exported</span>
-          <button class="pile-item__del" title="Remove from pile" @click="removeFromPile(p.id)">
-            ×
-          </button>
-        </li>
-      </ul>
-    </aside>
+    <ResizeHandle
+      v-if="showPile || showChat"
+      axis="x"
+      :active="hDragging"
+      @start="startHResize"
+    />
 
-    <div v-if="showChat && current" class="review__chat">
-      <ChatPanel :sid="sid" :card="current" @apply="applyEdit" />
+    <div
+      v-if="showPile || showChat"
+      class="review__right"
+      :style="{ gridTemplateRows: gridRows }"
+    >
+      <aside v-if="showPile" class="review__pile">
+        <h3>Pile <span class="muted small">({{ session.pileCount }})</span></h3>
+        <p v-if="session.picks.length === 0" class="muted small">
+          Empty — click words in any sentence and press A.
+        </p>
+        <ul v-else class="pile-list">
+          <li v-for="p in session.picks" :key="p.id" class="pile-item">
+            <button class="pile-item__head" @click="index = session.cards.findIndex((c) => c.index === p.cueIndex)">
+              <!-- Surface is what shows on the card front, so display it primary. -->
+              <span class="pile-item__surface">{{ p.surface }}</span>
+              <span v-if="p.surface !== p.lemma" class="pile-item__lemma muted small">→ {{ p.lemma }}</span>
+            </button>
+            <span class="pile-item__meta muted small">cue #{{ p.cueIndex }}</span>
+            <span v-if="p.exported" class="pile-item__exported small">exported</span>
+            <button class="pile-item__del" title="Remove from pile" @click="removeFromPile(p.id)">
+              ×
+            </button>
+          </li>
+        </ul>
+      </aside>
+
+      <ResizeHandle
+        v-if="showPile && showChat"
+        axis="y"
+        :active="vDragging"
+        @start="startVResize"
+      />
+
+      <div v-if="showChat && current" class="review__chat">
+        <ChatPanel :sid="sid" :card="current" @apply="applyEdit" />
+      </div>
     </div>
     </div>
   </section>
@@ -766,26 +846,32 @@ const picksForCurrentCue = computed(() =>
 
 <style scoped>
 .review {
-  max-width: 720px;
-}
-.review--wide {
-  max-width: 1240px;
-}
-.review__main {
+  width: 100%;
   display: flex;
-  gap: 18px;
-  align-items: flex-start;
+  flex-direction: column;
+  /* Fill the viewport below the app-header (~57px) and the review__header. */
+  min-height: calc(100vh - 130px);
 }
-.review__col {
+.review__pane {
+  display: grid;
+  gap: 0;
   flex: 1;
-  min-width: 0;
+  min-height: 0;
+  align-items: stretch;
 }
-.review__side {
-  width: 280px;
-  flex-shrink: 0;
-  position: sticky;
-  top: 16px;
-  max-height: min(78vh, 720px);
+.review__left {
+  min-width: 0;
+  min-height: 0;
+  overflow-y: auto;
+}
+.review__right {
+  display: grid;
+  gap: 0;
+  min-width: 0;
+  min-height: 0;
+}
+.review__pile {
+  min-height: 0;
   overflow-y: auto;
   background: var(--bBg);
   border: 1px solid var(--pageLine);
@@ -793,11 +879,13 @@ const picksForCurrentCue = computed(() =>
   padding: 12px 14px;
 }
 .review__chat {
-  width: 380px;
-  flex-shrink: 0;
-  height: min(72vh, 680px);
-  position: sticky;
-  top: 16px;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.review__chat > * {
+  flex: 1;
+  min-height: 0;
 }
 button.ghost.active {
   border-color: var(--accent);
