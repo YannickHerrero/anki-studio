@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue';
 import { useRouter, RouterLink } from 'vue-router';
-import { streamSse } from '../api';
+import { probeYoutube, streamSse } from '../api';
 import { useSettingsStore } from '../stores/settings';
 import { useSessionStore } from '../stores/session';
 
@@ -15,6 +15,7 @@ const error = ref<string | null>(null);
 
 type Phase =
   | 'idle'
+  | 'probe'
   | 'download'
   | 'transcribe'
   | 'refine'
@@ -23,6 +24,10 @@ type Phase =
   | 'tokenize'
   | 'done';
 const phase = ref<Phase>('idle');
+
+const availableSubLangs = ref<string[]>([]);
+let pendingChoice: ((useExisting: boolean) => void) | null = null;
+const subsModalOpen = ref(false);
 
 const downloadPct = ref(0);
 const cueCount = ref(0);
@@ -48,6 +53,21 @@ const canSubmit = computed(
   () => looksLikeYoutube.value && settings.isYoutubeReady && !busy.value,
 );
 
+function askKeepSubs(): Promise<boolean> {
+  subsModalOpen.value = true;
+  return new Promise<boolean>((resolve) => {
+    pendingChoice = (useExisting: boolean) => {
+      subsModalOpen.value = false;
+      pendingChoice = null;
+      resolve(useExisting);
+    };
+  });
+}
+
+function chooseSubs(useExisting: boolean) {
+  pendingChoice?.(useExisting);
+}
+
 async function go() {
   if (!canSubmit.value) return;
   busy.value = true;
@@ -59,20 +79,39 @@ async function go() {
   processedTotal.value = 0;
   audioStage.value = '';
   videoTitle.value = '';
+  availableSubLangs.value = [];
 
   let sid: string | null = null;
   let splitTotal = 0;
   let splitDurationMs = 0;
+  let useExistingSubs = false;
+  let subLangs: string[] = [];
+  let needsTranscription = true;
 
   try {
-    // 1. Download + extract audio
+    // 0. Probe for manually-uploaded JP subs. If any, ask user whether to
+    // keep them (often great) or regenerate with Whisper.
+    phase.value = 'probe';
+    const probed = await probeYoutube(url.value.trim());
+    videoTitle.value = probed.title;
+    if (probed.manualJapaneseSubs.length > 0) {
+      availableSubLangs.value = probed.manualJapaneseSubs;
+      useExistingSubs = await askKeepSubs();
+      if (useExistingSubs) subLangs = probed.manualJapaneseSubs;
+    }
+
+    // 1. Download + (optionally) keep existing subs, extract audio
     phase.value = 'download';
     await streamSse(
       '/youtube',
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ url: url.value.trim() }),
+        body: JSON.stringify({
+          url: url.value.trim(),
+          useExistingSubs,
+          subLangs,
+        }),
       },
       ({ event, data }) => {
         const d = data as {
@@ -86,6 +125,9 @@ async function go() {
           durationMs?: number;
           chunk?: number;
           of?: number;
+          needsTranscription?: boolean;
+          cueCount?: number;
+          usedExisting?: boolean;
         };
         if (event === 'meta') {
           videoTitle.value = d.title ?? '';
@@ -93,11 +135,20 @@ async function go() {
         } else if (event === 'split') {
           splitDurationMs = d.durationMs ?? splitDurationMs;
         } else if (event === 'download') downloadPct.value = d.pct ?? 0;
-        else if (event === 'audio') {
+        else if (event === 'subs') {
+          // If the server failed to actually parse the subs, fall back to Whisper.
+          if (d.stage === 'done' && d.usedExisting === false) {
+            useExistingSubs = false;
+          }
+        } else if (event === 'audio') {
           audioStage.value = (d.stage as 'extracting' | 'done') ?? '';
         } else if (event === 'done') {
           sid = d.sessionId ?? null;
           if (d.split) splitTotal = d.totalChunks ?? 0;
+          if (typeof d.needsTranscription === 'boolean') {
+            needsTranscription = d.needsTranscription;
+          }
+          if (typeof d.cueCount === 'number') cueCount.value = d.cueCount;
         } else if (event === 'error') throw new Error(d.message ?? 'download failed');
       },
     );
@@ -115,46 +166,49 @@ async function go() {
     if (!sid) throw new Error('no session id from /youtube');
     session.sessionId = sid;
 
-    // 2. Transcribe with Whisper
-    phase.value = 'transcribe';
-    await streamSse(
-      `/session/${sid}/transcribe`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ openaiKey: settings.openaiKey.trim() }),
-      },
-      ({ event, data }) => {
-        const d = data as { cueCount?: number; message?: string };
-        if (event === 'done') cueCount.value = d.cueCount ?? 0;
-        else if (event === 'error') throw new Error(d.message ?? 'transcription failed');
-      },
-    );
-
-    // 3. Refine sentence splits with the LLM (uses word timestamps for timing).
-    // Best-effort: if it fails, keep the heuristic splits we already have.
-    phase.value = 'refine';
-    try {
+    if (needsTranscription) {
+      // 2. Transcribe with Whisper
+      phase.value = 'transcribe';
       await streamSse(
-        `/session/${sid}/refineSplits`,
+        `/session/${sid}/transcribe`,
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            openrouterKey: settings.openrouterKey.trim(),
-            model: settings.model,
-          }),
+          body: JSON.stringify({ openaiKey: settings.openaiKey.trim() }),
         },
         ({ event, data }) => {
           const d = data as { cueCount?: number; message?: string };
-          if (event === 'done') cueCount.value = d.cueCount ?? cueCount.value;
-          else if (event === 'error') throw new Error(d.message ?? 'refine failed');
+          if (event === 'done') cueCount.value = d.cueCount ?? 0;
+          else if (event === 'error') throw new Error(d.message ?? 'transcription failed');
         },
       );
-    } catch (err) {
-      // Surface but don't abort the whole flow — heuristic cues are still usable.
-      // eslint-disable-next-line no-console
-      console.warn('split refinement failed, keeping heuristic cues:', err);
+
+      // 3. Refine sentence splits with the LLM (uses word timestamps for timing).
+      // Best-effort: if it fails, keep the heuristic splits we already have.
+      // Skipped when keeping existing subs (no Whisper word timestamps to refine against).
+      phase.value = 'refine';
+      try {
+        await streamSse(
+          `/session/${sid}/refineSplits`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              openrouterKey: settings.openrouterKey.trim(),
+              model: settings.model,
+            }),
+          },
+          ({ event, data }) => {
+            const d = data as { cueCount?: number; message?: string };
+            if (event === 'done') cueCount.value = d.cueCount ?? cueCount.value;
+            else if (event === 'error') throw new Error(d.message ?? 'refine failed');
+          },
+        );
+      } catch (err) {
+        // Surface but don't abort the whole flow — heuristic cues are still usable.
+        // eslint-disable-next-line no-console
+        console.warn('split refinement failed, keeping heuristic cues:', err);
+      }
     }
 
     // 4. Translate whole transcript in one call
@@ -228,6 +282,10 @@ async function go() {
 
 const phaseLabel = computed(() => {
   switch (phase.value) {
+    case 'probe':
+      return subsModalOpen.value
+        ? 'Choose subtitle source…'
+        : 'Checking subtitles…';
     case 'download':
       return `Downloading ${downloadPct.value.toFixed(0)}%` + (audioStage.value === 'extracting' ? ' — extracting audio…' : '');
     case 'transcribe':
@@ -251,6 +309,8 @@ const phaseLabel = computed(() => {
 
 const overallPct = computed(() => {
   switch (phase.value) {
+    case 'probe':
+      return 2;
     case 'download':
       return Math.round(downloadPct.value * 0.35);
     case 'transcribe':
@@ -314,6 +374,23 @@ const overallPct = computed(() => {
         <div class="bar__fill" :style="{ width: overallPct + '%' }"></div>
       </div>
       <div class="stage">{{ phaseLabel }}</div>
+    </div>
+
+    <div v-if="subsModalOpen" class="subs-picker">
+      <h2>Use the uploader's Japanese subtitles?</h2>
+      <p class="muted small">
+        This video ships with manually-written Japanese subtitles
+        ({{ availableSubLangs.join(', ') }}). They're usually much better
+        than Whisper — but not always. Pick which to use.
+      </p>
+      <div class="actions actions--stack">
+        <button class="primary" @click="chooseSubs(true)">
+          Keep the uploader's subtitles
+        </button>
+        <button class="secondary" @click="chooseSubs(false)">
+          Generate with Whisper instead
+        </button>
+      </div>
     </div>
 
     <div v-if="splitInfo" class="split-banner">
@@ -441,6 +518,44 @@ input {
   align-items: baseline;
 }
 .split-banner strong {
+  color: var(--accent);
+}
+.subs-picker {
+  margin-top: 22px;
+  padding: 18px 20px;
+  border: 1px solid var(--pageLine);
+  border-radius: 6px;
+  background: var(--bBg);
+}
+.subs-picker h2 {
+  font-family: 'Shippori Mincho', serif;
+  font-weight: 600;
+  font-size: 16px;
+  margin: 0 0 6px;
+}
+.subs-picker .small {
+  font-size: 12px;
+  margin-bottom: 14px;
+}
+.actions--stack {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 10px;
+  margin-bottom: 0;
+}
+.secondary {
+  background: transparent;
+  border: 1px solid var(--pageLine);
+  color: var(--pageInk);
+  padding: 10px 22px;
+  border-radius: 5px;
+  font-size: 13px;
+  cursor: pointer;
+  letter-spacing: 0.04em;
+  font-family: inherit;
+}
+.secondary:hover {
+  border-color: var(--accent);
   color: var(--accent);
 }
 .muted {

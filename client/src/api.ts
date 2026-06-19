@@ -61,6 +61,23 @@ export type UploadResult = {
   durationMs?: number;
 };
 
+export type YoutubeProbe = {
+  title: string;
+  durationMs: number;
+  /** yt-dlp lang codes the uploader manually provided (excludes auto-captions). */
+  manualJapaneseSubs: string[];
+};
+
+export async function probeYoutube(url: string): Promise<YoutubeProbe> {
+  const res = await fetch(`${BASE}/youtube/probe`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ url }),
+  });
+  if (!res.ok) throw new Error(`probe failed: ${res.status} ${await res.text()}`);
+  return res.json();
+}
+
 export async function upload(video: File, subtitle: File | null): Promise<UploadResult> {
   const fd = new FormData();
   fd.append('video', video, video.name);
