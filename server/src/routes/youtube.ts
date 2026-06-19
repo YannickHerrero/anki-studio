@@ -1,14 +1,28 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import type { FastifyInstance } from 'fastify';
-import { createSession, sessionDir } from '../lib/session.js';
+import {
+  createSession,
+  sessionDir,
+  unregisterSession,
+  type Session,
+} from '../lib/session.js';
 import { downloadVideo, isValidYouTubeUrl, probe, validateYtDlp } from '../lib/ytdlp.js';
-import { extractFullAudio, probeDurationMs } from '../lib/ffmpeg.js';
+import {
+  extractFullAudio,
+  probeDurationMs,
+  splitVideoIntoChunks,
+  type ChunkInfo,
+} from '../lib/ffmpeg.js';
 import { persistSession } from '../lib/persistence.js';
 
 type YouTubeBody = {
   url?: string;
 };
+
+const SPLIT_THRESHOLD_MS = 25 * 60 * 1000;
+const CHUNK_MS = 25 * 60 * 1000;
+const OVERLAP_MS = 5 * 1000;
 
 function sseLine(event: string, data: unknown): string {
   return `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
@@ -36,59 +50,126 @@ export async function youtubeRoutes(app: FastifyInstance) {
     });
     const write = (event: string, data: unknown) => reply.raw.write(sseLine(event, data));
 
-    let session;
-    try {
-      session = await createSession('youtube');
-      session.youtubeUrl = url;
-      persistSession(session, { immediate: true });
-      write('session', { sessionId: session.id });
+    // Stage in a temp session dir; we'll either keep it (short video) or
+    // wipe it after fanning out into N chunk sessions.
+    const tempSession = await createSession('youtube');
+    const tempDir = sessionDir(tempSession.id);
+    const createdSessions: Session[] = [];
 
-      // Probe for title + duration so we can show them in the UI.
+    try {
+      // Probe for title + duration up-front so we can show them in the UI.
       const meta = await probe(url);
-      session.title = meta.title;
-      persistSession(session);
       write('meta', { title: meta.title, durationMs: meta.durationMs });
 
-      // Download video. Progress is yt-dlp percentage 0..100.
-      const dir = sessionDir(session.id);
+      // Download video to the temp staging dir.
       const { videoPath } = await downloadVideo({
         url,
-        outDir: dir,
+        outDir: tempDir,
         onProgress: (pct) => write('download', { pct }),
       });
-      session.videoPath = videoPath;
-      session.videoOriginalName = path.basename(videoPath);
 
-      // Fingerprint the downloaded file so a later re-download can be verified.
+      // Confirm duration from the actual file (yt-dlp's metadata can be off).
+      let durationMs = meta.durationMs;
       try {
-        const [stat, durationMs] = await Promise.all([
-          fs.stat(videoPath),
-          probeDurationMs(videoPath),
-        ]);
-        session.videoSize = stat.size;
-        session.videoDurationMs = durationMs || meta.durationMs;
+        durationMs = (await probeDurationMs(videoPath)) || meta.durationMs;
       } catch {
-        session.videoDurationMs = meta.durationMs;
+        // fall back to meta.durationMs
       }
 
-      // Extract full audio for Whisper.
-      write('audio', { stage: 'extracting' });
-      const fullAudio = path.join(dir, 'full.mp3');
-      await extractFullAudio(videoPath, fullAudio);
-      persistSession(session, { immediate: true });
+      const needsSplit = durationMs > SPLIT_THRESHOLD_MS;
+      let chunks: ChunkInfo[];
+      if (needsSplit) {
+        write('split', {
+          durationMs,
+          chunkMs: CHUNK_MS,
+        });
+        chunks = await splitVideoIntoChunks(
+          videoPath,
+          tempDir,
+          durationMs,
+          CHUNK_MS,
+          OVERLAP_MS,
+        );
+      } else {
+        chunks = [
+          {
+            index: 0,
+            videoPath,
+            sourceStartMs: 0,
+            sourceEndMs: durationMs,
+            totalChunks: 1,
+          },
+        ];
+      }
+
+      const sessionSummaries: Array<{
+        sessionId: string;
+        chunkIndex: number;
+        totalChunks: number;
+        title: string;
+        durationMs: number;
+      }> = [];
+
+      for (const chunk of chunks) {
+        const session = await createSession('youtube');
+        createdSessions.push(session);
+        session.youtubeUrl = url;
+        session.title =
+          chunk.totalChunks === 1
+            ? meta.title
+            : `${meta.title} — part ${chunk.index + 1}/${chunk.totalChunks}`;
+        session.videoOriginalName = path.basename(chunk.videoPath);
+
+        // Move chunk video into the new session dir.
+        const dir = sessionDir(session.id);
+        const ext = path.extname(chunk.videoPath) || '.mp4';
+        const dst = path.join(dir, `video${ext}`);
+        await fs.rename(chunk.videoPath, dst);
+        session.videoPath = dst;
+
+        try {
+          const [stat, dur] = await Promise.all([fs.stat(dst), probeDurationMs(dst)]);
+          session.videoSize = stat.size;
+          session.videoDurationMs = dur;
+        } catch {
+          session.videoDurationMs = chunk.sourceEndMs - chunk.sourceStartMs;
+        }
+
+        // Extract full audio for Whisper, per chunk.
+        write('audio', { stage: 'extracting', chunk: chunk.index, of: chunk.totalChunks });
+        const fullAudio = path.join(dir, 'full.mp3');
+        await extractFullAudio(dst, fullAudio);
+        persistSession(session, { immediate: true });
+
+        sessionSummaries.push({
+          sessionId: session.id,
+          chunkIndex: chunk.index,
+          totalChunks: chunk.totalChunks,
+          title: session.title,
+          durationMs: session.videoDurationMs ?? chunk.sourceEndMs - chunk.sourceStartMs,
+        });
+      }
       write('audio', { stage: 'done' });
 
+      // Clean up the staging dir + temp session (it never held real data).
+      await fs.rm(tempDir, { recursive: true, force: true });
+      unregisterSession(tempSession.id);
+
+      const primary = sessionSummaries[0]!;
       write('done', {
-        sessionId: session.id,
+        sessionId: primary.sessionId,
         title: meta.title,
-        durationMs: meta.durationMs,
+        durationMs,
+        sessions: sessionSummaries,
+        split: sessionSummaries.length > 1,
+        totalChunks: sessionSummaries.length,
       });
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-      if (session) {
-        session.status = 'error';
-        session.errorMessage = message;
-        persistSession(session, { immediate: true });
+      for (const s of createdSessions) {
+        s.status = 'error';
+        s.errorMessage = message;
+        persistSession(s, { immediate: true });
       }
       write('error', { message });
     } finally {
