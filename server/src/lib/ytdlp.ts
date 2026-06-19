@@ -29,6 +29,43 @@ export async function probe(url: string): Promise<ProbeResult> {
   return { title: title ?? 'YouTube video', durationMs };
 }
 
+export type ProbeSubsResult = ProbeResult & {
+  /**
+   * Manually-uploaded Japanese subtitle language codes the uploader has
+   * provided (e.g. ['ja'] or ['ja', 'ja-Hira']). Auto-generated captions
+   * are intentionally excluded — they're usually too noisy to keep.
+   */
+  manualJapaneseSubs: string[];
+};
+
+const JP_LANG_RE = /^ja(?:[-_].+)?$/i;
+
+export async function probeWithSubs(url: string): Promise<ProbeSubsResult> {
+  const { stdout } = await execa(config.ytDlpPath, [
+    '--no-playlist',
+    '--skip-download',
+    '--no-warnings',
+    '-J',
+    url,
+  ]);
+  const info = JSON.parse(stdout) as {
+    title?: string;
+    duration?: number;
+    subtitles?: Record<string, unknown>;
+  };
+  const durationMs = Math.round(Number(info.duration ?? 0) * 1000);
+  if (!Number.isFinite(durationMs) || durationMs <= 0) {
+    throw new Error('yt-dlp returned no duration');
+  }
+  const subKeys = info.subtitles ? Object.keys(info.subtitles) : [];
+  const manualJapaneseSubs = subKeys.filter((k) => JP_LANG_RE.test(k));
+  return {
+    title: info.title ?? 'YouTube video',
+    durationMs,
+    manualJapaneseSubs,
+  };
+}
+
 export type DownloadOptions = {
   url: string;
   outDir: string;
@@ -74,6 +111,33 @@ export async function downloadVideo(opts: DownloadOptions): Promise<DownloadResu
   const candidate = entries.find((f) => f.startsWith('video.'));
   if (!candidate) throw new Error('yt-dlp finished but no video.* file was produced');
   return { videoPath: path.join(opts.outDir, candidate) };
+}
+
+/**
+ * Download manually-uploaded subtitles (no video) for one or more language
+ * codes. Returns the path to the first .vtt file written, or null if yt-dlp
+ * produced no subtitle file (e.g. the languages disappeared since probe time).
+ */
+export async function downloadSubtitles(
+  url: string,
+  outDir: string,
+  langs: string[],
+): Promise<string | null> {
+  if (!langs.length) return null;
+  await execa(config.ytDlpPath, [
+    '--no-playlist',
+    '--no-warnings',
+    '--skip-download',
+    '--write-subs',
+    '--sub-langs', langs.join(','),
+    '--sub-format', 'vtt/best',
+    '--convert-subs', 'vtt',
+    '-o', path.join(outDir, 'subs.%(ext)s'),
+    url,
+  ]);
+  const entries = await fs.readdir(outDir);
+  const found = entries.find((f) => f.startsWith('subs.') && f.endsWith('.vtt'));
+  return found ? path.join(outDir, found) : null;
 }
 
 export async function validateYtDlp(): Promise<void> {
