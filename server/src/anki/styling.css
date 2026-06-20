@@ -258,34 +258,87 @@
   background-position: 56% center;
   background-size: 14px;
 }
-/* Waveform marks on the right. The mask SVG is a 3-frame sprite (3 × 56px
-   side by side); CSS steps() the mask-position through them on loop to
-   animate the bar heights like a music visualiser. mask-image lets the
-   accent colour follow --accent in dark mode without baking it in. */
+/* Waveform on the right. Eight independent vertical bars rendered as a
+   multi-layer background — one linear-gradient per bar, each with its own
+   background-position and animatable background-size height. Anchoring at
+   `bottom` lets each bar grow upward from a baseline (equaliser look).
+   Bar width / step / height-scale live in CSS variables so the mobile
+   media query only has to redefine those three. */
 .replay-button::after,
 .replaybutton::after {
   content: '';
   width: 56px;
   height: 22px;
-  background-color: var(--accent);
-  -webkit-mask-image: url("data:image/svg+xml;charset=utf-8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 168 22'><g fill='black'><rect x='0' y='8' width='3' height='6' rx='1.5'/><rect x='7' y='4' width='3' height='14' rx='1.5'/><rect x='14' y='9' width='3' height='4' rx='1.5'/><rect x='21' y='3' width='3' height='16' rx='1.5'/><rect x='28' y='6' width='3' height='10' rx='1.5'/><rect x='35' y='8' width='3' height='6' rx='1.5'/><rect x='42' y='4' width='3' height='14' rx='1.5'/><rect x='49' y='9' width='3' height='4' rx='1.5'/><rect x='56' y='4' width='3' height='14' rx='1.5'/><rect x='63' y='8' width='3' height='6' rx='1.5'/><rect x='70' y='3' width='3' height='16' rx='1.5'/><rect x='77' y='9' width='3' height='4' rx='1.5'/><rect x='84' y='4' width='3' height='14' rx='1.5'/><rect x='91' y='6' width='3' height='10' rx='1.5'/><rect x='98' y='9' width='3' height='4' rx='1.5'/><rect x='105' y='5' width='3' height='12' rx='1.5'/><rect x='112' y='9' width='3' height='4' rx='1.5'/><rect x='119' y='3' width='3' height='16' rx='1.5'/><rect x='126' y='6' width='3' height='10' rx='1.5'/><rect x='133' y='4' width='3' height='14' rx='1.5'/><rect x='140' y='9' width='3' height='4' rx='1.5'/><rect x='147' y='4' width='3' height='14' rx='1.5'/><rect x='154' y='7' width='3' height='8' rx='1.5'/><rect x='161' y='8' width='3' height='6' rx='1.5'/></g></svg>");
-          mask-image: url("data:image/svg+xml;charset=utf-8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 168 22'><g fill='black'><rect x='0' y='8' width='3' height='6' rx='1.5'/><rect x='7' y='4' width='3' height='14' rx='1.5'/><rect x='14' y='9' width='3' height='4' rx='1.5'/><rect x='21' y='3' width='3' height='16' rx='1.5'/><rect x='28' y='6' width='3' height='10' rx='1.5'/><rect x='35' y='8' width='3' height='6' rx='1.5'/><rect x='42' y='4' width='3' height='14' rx='1.5'/><rect x='49' y='9' width='3' height='4' rx='1.5'/><rect x='56' y='4' width='3' height='14' rx='1.5'/><rect x='63' y='8' width='3' height='6' rx='1.5'/><rect x='70' y='3' width='3' height='16' rx='1.5'/><rect x='77' y='9' width='3' height='4' rx='1.5'/><rect x='84' y='4' width='3' height='14' rx='1.5'/><rect x='91' y='6' width='3' height='10' rx='1.5'/><rect x='98' y='9' width='3' height='4' rx='1.5'/><rect x='105' y='5' width='3' height='12' rx='1.5'/><rect x='112' y='9' width='3' height='4' rx='1.5'/><rect x='119' y='3' width='3' height='16' rx='1.5'/><rect x='126' y='6' width='3' height='10' rx='1.5'/><rect x='133' y='4' width='3' height='14' rx='1.5'/><rect x='140' y='9' width='3' height='4' rx='1.5'/><rect x='147' y='4' width='3' height='14' rx='1.5'/><rect x='154' y='7' width='3' height='8' rx='1.5'/><rect x='161' y='8' width='3' height='6' rx='1.5'/></g></svg>");
-  -webkit-mask-repeat: repeat-x;
-          mask-repeat: repeat-x;
-  -webkit-mask-size: 168px 22px;
-          mask-size: 168px 22px;
-  -webkit-mask-position: 0 0;
-          mask-position: 0 0;
-  animation: as-waveform 0.9s steps(3) infinite;
+  --bar-w: 3px;
+  --bar-step: 7px;
+  --bar-s: 1;
+  background-color: transparent;
+  background-image:
+    linear-gradient(var(--accent), var(--accent)),
+    linear-gradient(var(--accent), var(--accent)),
+    linear-gradient(var(--accent), var(--accent)),
+    linear-gradient(var(--accent), var(--accent)),
+    linear-gradient(var(--accent), var(--accent)),
+    linear-gradient(var(--accent), var(--accent)),
+    linear-gradient(var(--accent), var(--accent)),
+    linear-gradient(var(--accent), var(--accent));
+  background-repeat: no-repeat;
+  background-position:
+    calc(var(--bar-step) * 0) bottom,
+    calc(var(--bar-step) * 1) bottom,
+    calc(var(--bar-step) * 2) bottom,
+    calc(var(--bar-step) * 3) bottom,
+    calc(var(--bar-step) * 4) bottom,
+    calc(var(--bar-step) * 5) bottom,
+    calc(var(--bar-step) * 6) bottom,
+    calc(var(--bar-step) * 7) bottom;
+  background-size:
+    var(--bar-w) calc(6px * var(--bar-s)),
+    var(--bar-w) calc(14px * var(--bar-s)),
+    var(--bar-w) calc(8px * var(--bar-s)),
+    var(--bar-w) calc(16px * var(--bar-s)),
+    var(--bar-w) calc(4px * var(--bar-s)),
+    var(--bar-w) calc(12px * var(--bar-s)),
+    var(--bar-w) calc(10px * var(--bar-s)),
+    var(--bar-w) calc(18px * var(--bar-s));
+  animation: as-bars 1.5s ease-in-out infinite;
 }
-@keyframes as-waveform {
-  from {
-    -webkit-mask-position: 0 0;
-            mask-position: 0 0;
+/* Smooth pulsing — each bar interpolates between three heights over the
+   cycle with an ease-in-out timing function, so the motion feels organic
+   rather than ticking. */
+@keyframes as-bars {
+  0%, 100% {
+    background-size:
+      var(--bar-w) calc(6px * var(--bar-s)),
+      var(--bar-w) calc(14px * var(--bar-s)),
+      var(--bar-w) calc(8px * var(--bar-s)),
+      var(--bar-w) calc(16px * var(--bar-s)),
+      var(--bar-w) calc(4px * var(--bar-s)),
+      var(--bar-w) calc(12px * var(--bar-s)),
+      var(--bar-w) calc(10px * var(--bar-s)),
+      var(--bar-w) calc(18px * var(--bar-s));
   }
-  to {
-    -webkit-mask-position: -168px 0;
-            mask-position: -168px 0;
+  33% {
+    background-size:
+      var(--bar-w) calc(14px * var(--bar-s)),
+      var(--bar-w) calc(4px * var(--bar-s)),
+      var(--bar-w) calc(16px * var(--bar-s)),
+      var(--bar-w) calc(8px * var(--bar-s)),
+      var(--bar-w) calc(12px * var(--bar-s)),
+      var(--bar-w) calc(18px * var(--bar-s)),
+      var(--bar-w) calc(6px * var(--bar-s)),
+      var(--bar-w) calc(10px * var(--bar-s));
+  }
+  66% {
+    background-size:
+      var(--bar-w) calc(10px * var(--bar-s)),
+      var(--bar-w) calc(12px * var(--bar-s)),
+      var(--bar-w) calc(4px * var(--bar-s)),
+      var(--bar-w) calc(18px * var(--bar-s)),
+      var(--bar-w) calc(16px * var(--bar-s)),
+      var(--bar-w) calc(6px * var(--bar-s)),
+      var(--bar-w) calc(14px * var(--bar-s)),
+      var(--bar-w) calc(8px * var(--bar-s));
   }
 }
 @media (prefers-reduced-motion: reduce) {
@@ -297,7 +350,8 @@
 
 /* Phone-sized viewports: shrink the pill + green disc + waveform so the
    overlay stops crowding the small screenshot. The play triangle inside
-   the disc keeps its 14px size on purpose. */
+   the disc keeps its 14px size on purpose. The waveform reuses the same
+   keyframes — only --bar-w / --bar-step / --bar-s change. */
 @media (max-width: 480px) {
   .js-audio--overlay {
     left: 10px;
@@ -317,19 +371,9 @@
   .replaybutton::after {
     width: 38px;
     height: 16px;
-    -webkit-mask-size: 114px 16px;
-            mask-size: 114px 16px;
-    animation-name: as-waveform-sm;
-  }
-}
-@keyframes as-waveform-sm {
-  from {
-    -webkit-mask-position: 0 0;
-            mask-position: 0 0;
-  }
-  to {
-    -webkit-mask-position: -114px 0;
-            mask-position: -114px 0;
+    --bar-w: 2px;
+    --bar-step: 5px;
+    --bar-s: 0.73;
   }
 }
 
