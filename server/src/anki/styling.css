@@ -258,20 +258,41 @@
   background-position: 56% center;
   background-size: 14px;
 }
-/* Waveform marks on the right. Mask-image lets the accent colour follow
-   dark mode via --accent without baking a colour into the SVG. */
+/* Waveform marks on the right. The mask SVG is a 3-frame sprite (3 × 56px
+   side by side); CSS steps() the mask-position through them on loop to
+   animate the bar heights like a music visualiser. mask-image lets the
+   accent colour follow --accent in dark mode without baking it in. */
 .replay-button::after,
 .replaybutton::after {
   content: '';
   width: 56px;
   height: 22px;
   background-color: var(--accent);
-  -webkit-mask-image: url("data:image/svg+xml;charset=utf-8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 56 22'><g fill='black'><rect x='0' y='8' width='3' height='6' rx='1.5'/><rect x='7' y='4' width='3' height='14' rx='1.5'/><rect x='14' y='9' width='3' height='4' rx='1.5'/><rect x='21' y='2' width='3' height='18' rx='1.5'/><rect x='28' y='6' width='3' height='10' rx='1.5'/><rect x='35' y='8' width='3' height='6' rx='1.5'/><rect x='42' y='3' width='3' height='16' rx='1.5'/><rect x='49' y='9' width='3' height='4' rx='1.5'/></g></svg>");
-          mask-image: url("data:image/svg+xml;charset=utf-8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 56 22'><g fill='black'><rect x='0' y='8' width='3' height='6' rx='1.5'/><rect x='7' y='4' width='3' height='14' rx='1.5'/><rect x='14' y='9' width='3' height='4' rx='1.5'/><rect x='21' y='2' width='3' height='18' rx='1.5'/><rect x='28' y='6' width='3' height='10' rx='1.5'/><rect x='35' y='8' width='3' height='6' rx='1.5'/><rect x='42' y='3' width='3' height='16' rx='1.5'/><rect x='49' y='9' width='3' height='4' rx='1.5'/></g></svg>");
-  -webkit-mask-repeat: no-repeat;
-          mask-repeat: no-repeat;
-  -webkit-mask-size: contain;
-          mask-size: contain;
+  -webkit-mask-image: url("data:image/svg+xml;charset=utf-8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 168 22'><g fill='black'><rect x='0' y='8' width='3' height='6' rx='1.5'/><rect x='7' y='4' width='3' height='14' rx='1.5'/><rect x='14' y='9' width='3' height='4' rx='1.5'/><rect x='21' y='3' width='3' height='16' rx='1.5'/><rect x='28' y='6' width='3' height='10' rx='1.5'/><rect x='35' y='8' width='3' height='6' rx='1.5'/><rect x='42' y='4' width='3' height='14' rx='1.5'/><rect x='49' y='9' width='3' height='4' rx='1.5'/><rect x='56' y='4' width='3' height='14' rx='1.5'/><rect x='63' y='8' width='3' height='6' rx='1.5'/><rect x='70' y='3' width='3' height='16' rx='1.5'/><rect x='77' y='9' width='3' height='4' rx='1.5'/><rect x='84' y='4' width='3' height='14' rx='1.5'/><rect x='91' y='6' width='3' height='10' rx='1.5'/><rect x='98' y='9' width='3' height='4' rx='1.5'/><rect x='105' y='5' width='3' height='12' rx='1.5'/><rect x='112' y='9' width='3' height='4' rx='1.5'/><rect x='119' y='3' width='3' height='16' rx='1.5'/><rect x='126' y='6' width='3' height='10' rx='1.5'/><rect x='133' y='4' width='3' height='14' rx='1.5'/><rect x='140' y='9' width='3' height='4' rx='1.5'/><rect x='147' y='4' width='3' height='14' rx='1.5'/><rect x='154' y='7' width='3' height='8' rx='1.5'/><rect x='161' y='8' width='3' height='6' rx='1.5'/></g></svg>");
+          mask-image: url("data:image/svg+xml;charset=utf-8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 168 22'><g fill='black'><rect x='0' y='8' width='3' height='6' rx='1.5'/><rect x='7' y='4' width='3' height='14' rx='1.5'/><rect x='14' y='9' width='3' height='4' rx='1.5'/><rect x='21' y='3' width='3' height='16' rx='1.5'/><rect x='28' y='6' width='3' height='10' rx='1.5'/><rect x='35' y='8' width='3' height='6' rx='1.5'/><rect x='42' y='4' width='3' height='14' rx='1.5'/><rect x='49' y='9' width='3' height='4' rx='1.5'/><rect x='56' y='4' width='3' height='14' rx='1.5'/><rect x='63' y='8' width='3' height='6' rx='1.5'/><rect x='70' y='3' width='3' height='16' rx='1.5'/><rect x='77' y='9' width='3' height='4' rx='1.5'/><rect x='84' y='4' width='3' height='14' rx='1.5'/><rect x='91' y='6' width='3' height='10' rx='1.5'/><rect x='98' y='9' width='3' height='4' rx='1.5'/><rect x='105' y='5' width='3' height='12' rx='1.5'/><rect x='112' y='9' width='3' height='4' rx='1.5'/><rect x='119' y='3' width='3' height='16' rx='1.5'/><rect x='126' y='6' width='3' height='10' rx='1.5'/><rect x='133' y='4' width='3' height='14' rx='1.5'/><rect x='140' y='9' width='3' height='4' rx='1.5'/><rect x='147' y='4' width='3' height='14' rx='1.5'/><rect x='154' y='7' width='3' height='8' rx='1.5'/><rect x='161' y='8' width='3' height='6' rx='1.5'/></g></svg>");
+  -webkit-mask-repeat: repeat-x;
+          mask-repeat: repeat-x;
+  -webkit-mask-size: 168px 22px;
+          mask-size: 168px 22px;
+  -webkit-mask-position: 0 0;
+          mask-position: 0 0;
+  animation: as-waveform 0.9s steps(3) infinite;
+}
+@keyframes as-waveform {
+  from {
+    -webkit-mask-position: 0 0;
+            mask-position: 0 0;
+  }
+  to {
+    -webkit-mask-position: -168px 0;
+            mask-position: -168px 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .replay-button::after,
+  .replaybutton::after {
+    animation: none;
+  }
 }
 
 /* Phone-sized viewports: shrink the pill + green disc + waveform so the
@@ -296,6 +317,19 @@
   .replaybutton::after {
     width: 38px;
     height: 16px;
+    -webkit-mask-size: 114px 16px;
+            mask-size: 114px 16px;
+    animation-name: as-waveform-sm;
+  }
+}
+@keyframes as-waveform-sm {
+  from {
+    -webkit-mask-position: 0 0;
+            mask-position: 0 0;
+  }
+  to {
+    -webkit-mask-position: -114px 0;
+            mask-position: -114px 0;
   }
 }
 
