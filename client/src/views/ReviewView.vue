@@ -1220,13 +1220,12 @@ const picksForCurrentCue = computed(() =>
 }
 .rv-frame {
   position: relative;
+  width: 100%;
   height: 100%;
-  max-height: 100%;
-  aspect-ratio: 16/9;
-  max-width: 100%;
   display: flex;
   align-items: center;
   justify-content: center;
+  /* Hatched fallback only shows when no screenshot is loaded. */
   background-image: repeating-linear-gradient(135deg, #23211a 0 1px, transparent 1px 14px);
 }
 .rv-frame__img {
@@ -1234,7 +1233,7 @@ const picksForCurrentCue = computed(() =>
   inset: 0;
   width: 100%;
   height: 100%;
-  object-fit: contain;
+  object-fit: cover;
 }
 .rv-frame__pending {
   color: #6f6a5c;
