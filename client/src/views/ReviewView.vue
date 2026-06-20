@@ -800,7 +800,6 @@ const picksForCurrentCue = computed(() =>
               />
               <div v-else class="rv-frame__pending">screenshot not ready</div>
               <div v-if="current" class="rv-frame__chip">{{ currentDurationLabel }}</div>
-              <div v-if="current && current.text" class="rv-frame__sub">{{ current.text }}</div>
             </div>
           </div>
         </div>
@@ -1255,22 +1254,6 @@ const picksForCurrentCue = computed(() =>
   border-radius: 6px;
   padding: 3px 8px;
 }
-.rv-frame__sub {
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: 16px;
-  text-align: center;
-  padding: 0 24px;
-  font-family: 'Shippori Mincho', serif;
-  font-weight: 600;
-  font-size: 18px;
-  line-height: 1.55;
-  color: #fff;
-  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.85);
-  pointer-events: none;
-}
-
 /* ============ Workspace card ============ */
 .rv-workspace {
   min-height: 0;
@@ -1306,8 +1289,8 @@ const picksForCurrentCue = computed(() =>
 .rv-sentence {
   font-family: 'Shippori Mincho', serif;
   font-weight: 500;
-  font-size: 29px;
-  line-height: 1.95;
+  font-size: 22px;
+  line-height: 1.85;
   color: var(--ink);
   margin: 0;
 }
