@@ -2,6 +2,8 @@ import type { FastifyInstance } from 'fastify';
 import { readAnkiAssets } from '../lib/ankiAssets.js';
 import {
   createModel,
+  modelFieldAdd,
+  modelFieldNames,
   modelNames,
   updateModelStyling,
   updateModelTemplates,
@@ -58,6 +60,16 @@ export async function ankiSyncRoutes(app: FastifyInstance) {
     try {
       const names = await modelNames(url);
       if (names.includes(modelName)) {
+        // Add any fields we reference that the user's Anki model doesn't have
+        // yet (e.g. when a new field like AudioDurationMs ships). Existing
+        // fields — including any the user added manually — are left alone.
+        const existing = new Set(await modelFieldNames(modelName, url));
+        const added: string[] = [];
+        for (const field of FIELDS) {
+          if (existing.has(field)) continue;
+          await modelFieldAdd({ modelName, fieldName: field }, url);
+          added.push(field);
+        }
         await updateModelTemplates(
           {
             name: modelName,
@@ -68,7 +80,7 @@ export async function ankiSyncRoutes(app: FastifyInstance) {
           url,
         );
         await updateModelStyling({ name: modelName, css: assets.css }, url);
-        return { ok: true, action: 'updated', modelName };
+        return { ok: true, action: 'updated', modelName, addedFields: added };
       }
 
       await createModel(

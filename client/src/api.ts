@@ -73,6 +73,8 @@ export type AnkiSyncResult = {
   /** 'updated' when the model already existed; 'created' on first sync. */
   action: 'updated' | 'created';
   modelName: string;
+  /** Fields added to the user's existing model (empty when none / on create). */
+  addedFields?: string[];
 };
 
 export async function syncAnkiModel(opts: {

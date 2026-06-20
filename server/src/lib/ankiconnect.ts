@@ -69,6 +69,25 @@ export async function modelNames(url?: string): Promise<string[]> {
   return invoke<string[]>('modelNames', {}, url);
 }
 
+export async function modelFieldNames(modelName: string, url?: string): Promise<string[]> {
+  return invoke<string[]>('modelFieldNames', { modelName }, url);
+}
+
+export async function modelFieldAdd(
+  params: { modelName: string; fieldName: string; index?: number },
+  url?: string,
+): Promise<unknown> {
+  return invoke<unknown>(
+    'modelFieldAdd',
+    {
+      modelName: params.modelName,
+      fieldName: params.fieldName,
+      ...(params.index != null ? { index: params.index } : {}),
+    },
+    url,
+  );
+}
+
 export async function createModel(
   params: {
     modelName: string;

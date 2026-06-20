@@ -44,12 +44,15 @@ async function syncAnki() {
   ankiResult.value = null;
   try {
     const result = await syncAnkiModel({ url: settings.ankiConnectUrl.trim() });
+    const added = result.addedFields?.length
+      ? ` Added field${result.addedFields.length === 1 ? '' : 's'}: ${result.addedFields.join(', ')}.`
+      : '';
     ankiResult.value = {
       ok: true,
       message:
         result.action === 'created'
           ? `Created "${result.modelName}" in Anki.`
-          : `Updated "${result.modelName}" templates + CSS in Anki.`,
+          : `Updated "${result.modelName}" templates + CSS in Anki.${added}`,
     };
   } catch (err) {
     ankiResult.value = {
