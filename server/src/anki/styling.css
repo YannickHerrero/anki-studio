@@ -88,6 +88,10 @@
   transform: translateY(2px);
 }
 
+.js-screenshot {
+  position: relative;
+}
+
 .js-screenshot img {
   width: 100%;
   display: block;
@@ -196,6 +200,21 @@
    second button (the visible one is already in {{FrontSide}}). */
 .js-audio--hidden {
   display: none;
+}
+
+/* Overlay variant — floats the pill in the bottom-left corner of the
+   screenshot so the card stays compact. Pairs with .js-screenshot's
+   position:relative. */
+.js-audio--overlay {
+  position: absolute;
+  left: 16px;
+  bottom: 16px;
+  padding: 0;
+  display: block;
+}
+.js-audio--overlay .replay-button,
+.js-audio--overlay .replaybutton {
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.18);
 }
 
 /* Style Anki's replay button as a pill with a green play disc + waveform.
