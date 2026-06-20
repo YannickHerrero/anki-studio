@@ -1,6 +1,5 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
 import type { FastifyInstance } from 'fastify';
 import {
   requireSession,
@@ -11,6 +10,7 @@ import {
   type Pick,
 } from '../lib/session.js';
 import { buildApkg, type ApkgNote } from '../lib/apkg.js';
+import { readAnkiAssets } from '../lib/ankiAssets.js';
 import {
   enrichSentence,
   enrichWordBatch,
@@ -31,18 +31,6 @@ type ExportBody = {
   /** Re-enrich and ship picks that have already been exported once. */
   includeExported?: boolean;
 };
-
-const here = path.dirname(fileURLToPath(import.meta.url));
-const ankiDir = path.resolve(here, '..', 'anki');
-
-async function readAnkiAssets() {
-  const [front, back, css] = await Promise.all([
-    fs.promises.readFile(path.join(ankiDir, 'front.html'), 'utf8'),
-    fs.promises.readFile(path.join(ankiDir, 'back.html'), 'utf8'),
-    fs.promises.readFile(path.join(ankiDir, 'styling.css'), 'utf8'),
-  ]);
-  return { front, back, css };
-}
 
 function sseLine(event: string, data: unknown): string {
   return `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
