@@ -188,7 +188,71 @@
 }
 
 .js-audio {
+  display: flex;
+  justify-content: center;
+  padding: 16px 0 24px;
+}
+/* Hidden variant — used on the back so audio autoplays without showing a
+   second button (the visible one is already in {{FrontSide}}). */
+.js-audio--hidden {
   display: none;
+}
+
+/* Style Anki's replay button as a pill with a green play disc + waveform.
+   Anki renders [sound:foo.mp3] as <a class="replay-button">…</a> (newer)
+   or <a class="replaybutton">…</a> (older); both are styled here. */
+.replay-button,
+.replaybutton {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  padding: 6px 24px 6px 6px;
+  background: var(--bPanel);
+  border: 1px solid var(--bLine);
+  border-radius: 999px;
+  text-decoration: none;
+  color: var(--accent);
+  cursor: pointer;
+}
+.replay-button:hover,
+.replaybutton:hover {
+  background: var(--bLine);
+}
+/* Suppress Anki's default SVG so the pseudo-elements are the only mark. */
+.replay-button svg,
+.replay-button > span,
+.replaybutton svg,
+.replaybutton > span {
+  display: none;
+}
+/* Green play disc on the left. */
+.replay-button::before,
+.replaybutton::before {
+  content: '';
+  flex-shrink: 0;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background-color: var(--accent);
+  background-image: url("data:image/svg+xml;charset=utf-8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><path fill='%23ffffff' d='M8 5v14l11-7z'/></svg>");
+  background-repeat: no-repeat;
+  background-position: 56% center;
+  background-size: 14px;
+}
+/* Waveform marks on the right. Mask-image lets the accent colour follow
+   dark mode via --accent without baking a colour into the SVG. */
+.replay-button::after,
+.replaybutton::after {
+  content: '';
+  width: 56px;
+  height: 22px;
+  background-color: var(--accent);
+  -webkit-mask-image: url("data:image/svg+xml;charset=utf-8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 56 22'><g fill='black'><rect x='0' y='8' width='3' height='6' rx='1.5'/><rect x='7' y='4' width='3' height='14' rx='1.5'/><rect x='14' y='9' width='3' height='4' rx='1.5'/><rect x='21' y='2' width='3' height='18' rx='1.5'/><rect x='28' y='6' width='3' height='10' rx='1.5'/><rect x='35' y='8' width='3' height='6' rx='1.5'/><rect x='42' y='3' width='3' height='16' rx='1.5'/><rect x='49' y='9' width='3' height='4' rx='1.5'/></g></svg>");
+          mask-image: url("data:image/svg+xml;charset=utf-8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 56 22'><g fill='black'><rect x='0' y='8' width='3' height='6' rx='1.5'/><rect x='7' y='4' width='3' height='14' rx='1.5'/><rect x='14' y='9' width='3' height='4' rx='1.5'/><rect x='21' y='2' width='3' height='18' rx='1.5'/><rect x='28' y='6' width='3' height='10' rx='1.5'/><rect x='35' y='8' width='3' height='6' rx='1.5'/><rect x='42' y='3' width='3' height='16' rx='1.5'/><rect x='49' y='9' width='3' height='4' rx='1.5'/></g></svg>");
+  -webkit-mask-repeat: no-repeat;
+          mask-repeat: no-repeat;
+  -webkit-mask-size: contain;
+          mask-size: contain;
 }
 
 /* ----- Vocab-card additions ----- */
