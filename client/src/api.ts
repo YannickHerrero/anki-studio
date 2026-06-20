@@ -93,34 +93,6 @@ export async function syncAnkiModel(opts: {
   return res.json();
 }
 
-export type BackfillDurationsResult = {
-  ok: true;
-  scanned: number;
-  updated: number;
-  skipped: number;
-  /** Notes whose source session is no longer on disk — can't compute duration. */
-  missing: number;
-  failed: number;
-  /** Sample of missing filenames (capped server-side). */
-  missingFiles: string[];
-};
-
-export async function backfillAudioDurations(opts: {
-  url?: string;
-  modelName?: string;
-}): Promise<BackfillDurationsResult> {
-  const res = await fetch(`${BASE}/anki/backfill-durations`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(opts),
-  });
-  if (!res.ok) {
-    const text = await res.text().catch(() => '');
-    throw new Error(`backfill failed: ${res.status} ${text.slice(0, 200)}`);
-  }
-  return res.json();
-}
-
 export async function probeYoutube(url: string): Promise<YoutubeProbe> {
   const res = await fetch(`${BASE}/youtube/probe`, {
     method: 'POST',

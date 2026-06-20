@@ -1,4 +1,4 @@
-<div class="js-card" data-audio-duration-ms="{{AudioDurationMs}}">
+<div class="js-card">
   <div class="js-card__inner">
     {{#Screenshot}}
     <div class="js-screenshot">
@@ -16,34 +16,3 @@
     </div>
   </div>
 </div>
-
-<script>
-(function() {
-  // Flip the replay button's icon from play→pause while the audio plays,
-  // and back to play after AudioDurationMs has elapsed. Missing/zero
-  // duration → no flip (graceful for cards exported before this field).
-  //
-  // This script is included on the back too (via {{FrontSide}}), so it
-  // detects which side it's running on and auto-triggers the flip when
-  // the back's hidden {{Audio}} has just autoplayed.
-  var card = document.querySelector('.js-card[data-audio-duration-ms]');
-  if (!card) return;
-  var ms = parseInt(card.getAttribute('data-audio-duration-ms') || '0', 10) || 0;
-  var btn = card.querySelector('.replay-button, .replaybutton');
-  if (!btn) return;
-  var w = window;
-  function flip(playing) {
-    btn.classList.toggle('playing', !!playing);
-    if (w._asAudioTimer) { clearTimeout(w._asAudioTimer); w._asAudioTimer = null; }
-    if (playing && ms > 0) {
-      w._asAudioTimer = setTimeout(function() { btn.classList.remove('playing'); }, ms);
-    }
-  }
-  // Idempotent rebind: {{FrontSide}} re-runs this script on the back side.
-  if (btn._asOnClick) btn.removeEventListener('click', btn._asOnClick);
-  btn._asOnClick = function() { flip(true); };
-  btn.addEventListener('click', btn._asOnClick);
-  // Back side present → Anki just autoplayed the hidden {{Audio}}. Mirror it.
-  if (document.querySelector('.js-card--answer')) flip(true);
-})();
-</script>

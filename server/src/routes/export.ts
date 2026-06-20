@@ -158,12 +158,6 @@ export async function exportRoutes(app: FastifyInstance) {
         const sentenceWithTarget = highlightTargetInSentence(cue.text, pick.surface);
         const audioFile = `as_${sid.slice(0, 8)}_${cue.index}.mp3`;
         const shotFile = `as_${sid.slice(0, 8)}_${cue.index}.jpg`;
-        // Length of the encoded mp3 — extractAudio adds 500ms of pre+post pad,
-        // clamping the start at 0. Matches the maths in lib/ffmpeg.ts:extractAudio.
-        const audioStartMs = Math.max(0, cue.startMs - 500);
-        const audioEndMs = cue.endMs + 500;
-        const audioDurationMs = audioEndMs - audioStartMs;
-
         return {
           // Show the surface form (as the user picked it) on the front;
           // the dictionary form lives inside WordDetails on the back.
@@ -176,7 +170,6 @@ export async function exportRoutes(app: FastifyInstance) {
           guidSeed: `${session.id}:${pick.id}`,
           audioFilename: audioFile,
           audioPath: audioPath(sid, cue.index),
-          audioDurationMs,
           screenshotFilename: shotFile,
           screenshotPath: screenshotPath(sid, cue.index),
         };

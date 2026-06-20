@@ -2,16 +2,12 @@ import type { FastifyInstance } from 'fastify';
 import { readAnkiAssets } from '../lib/ankiAssets.js';
 import {
   createModel,
-  findNotes,
   modelFieldAdd,
   modelFieldNames,
   modelNames,
-  notesInfo,
   updateModelStyling,
   updateModelTemplates,
-  updateNoteFields,
 } from '../lib/ankiconnect.js';
-import { allSessions } from '../lib/session.js';
 
 type SyncBody = {
   /** AnkiConnect URL. Defaults to http://127.0.0.1:8765. */
@@ -33,7 +29,6 @@ const FIELDS = [
   'Sentence',
   'SentenceTranslation',
   'Audio',
-  'AudioDurationMs',
   'Screenshot',
   'WordDetails',
   'Grammar',
@@ -99,96 +94,6 @@ export async function ankiSyncRoutes(app: FastifyInstance) {
         url,
       );
       return { ok: true, action: 'created', modelName };
-    } catch (err) {
-      return reply.code(502).send({
-        error: err instanceof Error ? err.message : String(err),
-      });
-    }
-  });
-
-  /**
-   * One-shot backfill: walk every note of the model and populate
-   * AudioDurationMs by matching the [sound:as_<sidPrefix>_<cueIdx>.mp3]
-   * filename back to the originating session+cue. Notes already populated
-   * are skipped; notes whose session is no longer on disk are reported as
-   * missing (re-export to recover).
-   */
-  app.post('/anki/backfill-durations', async (req, reply) => {
-    const body = (req.body as SyncBody | undefined) ?? {};
-    const url = body.url?.trim() || undefined;
-    const modelName = body.modelName?.trim() || DEFAULT_MODEL_NAME;
-
-    // Build a fast lookup keyed by the 8-char sid prefix used in filenames.
-    const sessionsByPrefix = new Map<string, ReturnType<typeof allSessions>[number]>();
-    for (const s of allSessions()) {
-      sessionsByPrefix.set(s.id.slice(0, 8), s);
-    }
-
-    try {
-      const noteIds = await findNotes(`note:"${modelName}"`, url);
-      const infos = await notesInfo(noteIds, url);
-
-      let updated = 0;
-      let skipped = 0;
-      let missing = 0;
-      let failed = 0;
-      const missingFiles: string[] = [];
-
-      for (const info of infos) {
-        const audioRaw = info.fields.Audio?.value ?? '';
-        const durRaw = info.fields.AudioDurationMs?.value ?? '';
-        if (durRaw.trim().length > 0) {
-          skipped++;
-          continue;
-        }
-        const m = audioRaw.match(/\[sound:([^\]]+)\]/);
-        if (!m) {
-          skipped++;
-          continue;
-        }
-        const filename = m[1]!;
-        // as_<8 hex>_<cueIndex>.mp3
-        const parts = filename.match(/^as_([a-f0-9]{8})_(\d+)\.mp3$/i);
-        if (!parts) {
-          skipped++;
-          continue;
-        }
-        const sidPrefix = parts[1]!.toLowerCase();
-        const cueIndex = Number(parts[2]);
-        const session = sessionsByPrefix.get(sidPrefix);
-        const cue = session?.cues.find((c) => c.index === cueIndex);
-        if (!session || !cue) {
-          missing++;
-          if (missingFiles.length < 20) missingFiles.push(filename);
-          continue;
-        }
-
-        // Mirror the formula in routes/export.ts (and lib/ffmpeg.ts:extractAudio):
-        // ±500 ms of padding, start clamped at 0.
-        const audioStartMs = Math.max(0, cue.startMs - 500);
-        const audioEndMs = cue.endMs + 500;
-        const durationMs = audioEndMs - audioStartMs;
-
-        try {
-          await updateNoteFields(
-            { id: info.noteId, fields: { AudioDurationMs: String(durationMs) } },
-            url,
-          );
-          updated++;
-        } catch {
-          failed++;
-        }
-      }
-
-      return {
-        ok: true,
-        scanned: infos.length,
-        updated,
-        skipped,
-        missing,
-        failed,
-        missingFiles,
-      };
     } catch (err) {
       return reply.code(502).send({
         error: err instanceof Error ? err.message : String(err),

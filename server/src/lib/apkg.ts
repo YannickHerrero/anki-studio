@@ -22,8 +22,6 @@ export type ApkgNote = {
   guidSeed: string;
   audioFilename?: string;
   audioPath?: string;
-  /** Length of the encoded mp3 in ms — drives the play/pause icon timer. */
-  audioDurationMs?: number;
   screenshotFilename?: string;
   screenshotPath?: string;
 };
@@ -117,7 +115,6 @@ const FIELDS = [
   'Sentence',
   'SentenceTranslation',
   'Audio',
-  'AudioDurationMs',
   'Screenshot',
   'WordDetails',
   'Grammar',
@@ -335,7 +332,6 @@ export async function buildApkg(opts: BuildApkgOptions): Promise<void> {
       note.sentence,
       note.sentenceTranslation,
       audioField,
-      note.audioDurationMs != null ? String(note.audioDurationMs) : '',
       screenshotField,
       note.wordDetails,
       note.grammar,
