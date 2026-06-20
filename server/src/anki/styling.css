@@ -258,6 +258,15 @@
   background-position: 56% center;
   background-size: 14px;
 }
+/* Pause icon while audio is playing — driven by JS toggling .playing on click
+   or back-side autoplay. The icon flips back when the AudioDurationMs timer
+   elapses. */
+.replay-button.playing::before,
+.replaybutton.playing::before {
+  background-image: url("data:image/svg+xml;charset=utf-8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><path fill='%23ffffff' d='M6 5h4v14H6zM14 5h4v14h-4z'/></svg>");
+  background-position: center;
+  background-size: 12px;
+}
 /* Waveform marks on the right. Mask-image lets the accent colour follow
    dark mode via --accent without baking a colour into the SVG. */
 .replay-button::after,
