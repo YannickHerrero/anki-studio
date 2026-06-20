@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref } from 'vue';
 import { useSettingsStore, MODEL_PRESETS } from '../stores/settings';
-import { syncAnkiModel } from '../api';
+import { backfillAudioDurations, syncAnkiModel } from '../api';
 
 const settings = useSettingsStore();
 const showOpenrouter = ref(false);
@@ -12,6 +12,8 @@ const openrouterResult = ref<{ ok: boolean; message: string } | null>(null);
 const openaiResult = ref<{ ok: boolean; message: string } | null>(null);
 const syncingAnki = ref(false);
 const ankiResult = ref<{ ok: boolean; message: string } | null>(null);
+const backfilling = ref(false);
+const backfillResult = ref<{ ok: boolean; message: string } | null>(null);
 
 async function testOpenrouter() {
   testingOpenrouter.value = true;
@@ -36,6 +38,28 @@ async function testOpenrouter() {
     };
   } finally {
     testingOpenrouter.value = false;
+  }
+}
+
+async function backfill() {
+  backfilling.value = true;
+  backfillResult.value = null;
+  try {
+    const r = await backfillAudioDurations({ url: settings.ankiConnectUrl.trim() });
+    const bits = [`updated ${r.updated}`, `skipped ${r.skipped}`];
+    if (r.missing > 0) bits.push(`missing ${r.missing}`);
+    if (r.failed > 0) bits.push(`failed ${r.failed}`);
+    backfillResult.value = {
+      ok: r.failed === 0,
+      message: `Scanned ${r.scanned} notes — ${bits.join(', ')}.`,
+    };
+  } catch (err) {
+    backfillResult.value = {
+      ok: false,
+      message: err instanceof Error ? err.message : String(err),
+    };
+  } finally {
+    backfilling.value = false;
   }
 }
 
@@ -221,6 +245,31 @@ async function testOpenai() {
         {{ ankiResult.message }}
       </span>
     </div>
+
+    <p class="hint hint--sub">
+      One-time backfill: writes <code>AudioDurationMs</code> on every existing
+      Vocab Card by matching the audio filename back to its source session.
+      Idempotent — re-running only touches notes still missing the field.
+      Notes whose source session is gone are reported as <em>missing</em> and
+      can only be fixed by re-exporting.
+    </p>
+    <div class="actions">
+      <button
+        type="button"
+        class="ghost"
+        :disabled="!settings.ankiConnectUrl.trim() || backfilling"
+        @click="backfill"
+      >
+        {{ backfilling ? 'Backfilling…' : 'Backfill audio durations' }}
+      </button>
+      <span
+        v-if="backfillResult"
+        class="result"
+        :class="{ 'result--ok': backfillResult.ok, 'result--err': !backfillResult.ok }"
+      >
+        {{ backfillResult.message }}
+      </span>
+    </div>
   </section>
 </template>
 
@@ -326,6 +375,14 @@ button:disabled {
   font-size: 13px;
   line-height: 1.6;
   margin: 0 0 18px;
+}
+.hint--sub {
+  margin-top: 18px;
+  margin-bottom: 10px;
+  font-size: 12px;
+}
+.hint em {
+  font-style: italic;
 }
 code {
   font-family: ui-monospace, monospace;
