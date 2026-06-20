@@ -27,6 +27,7 @@ const FIELDS = [
   'Sentence',
   'SentenceTranslation',
   'Audio',
+  'AudioDurationMs',
   'Screenshot',
   'WordDetails',
   'Grammar',
