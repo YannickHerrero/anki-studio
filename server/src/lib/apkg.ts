@@ -243,7 +243,10 @@ const DEFAULT_DCONF = {
   1: {
     id: 1,
     name: 'Default',
-    replayq: true,
+    // The back template includes a hidden {{Audio}} that triggers a single
+    // autoplay on flip. replayq:true would also replay the audio inside
+    // {{FrontSide}}, causing a double-play.
+    replayq: false,
     lapse: { leechFails: 8, minInt: 1, delays: [10], leechAction: 0, mult: 0 },
     rev: { perDay: 200, fuzz: 0.05, ivlFct: 1, maxIvl: 36500, ease4: 1.3, bury: false, minSpace: 1 },
     timer: 0,
