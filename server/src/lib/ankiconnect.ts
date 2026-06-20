@@ -55,6 +55,33 @@ export async function cardsInfo(cardIds: number[], url?: string): Promise<AnkiCa
   return invoke<AnkiCardInfo[]>('cardsInfo', { cards: cardIds }, url);
 }
 
+export type AnkiNoteInfo = {
+  noteId: number;
+  modelName: string;
+  tags: string[];
+  fields: Record<string, { value: string; order: number }>;
+};
+
+export async function findNotes(query: string, url?: string): Promise<number[]> {
+  return invoke<number[]>('findNotes', { query }, url);
+}
+
+export async function notesInfo(noteIds: number[], url?: string): Promise<AnkiNoteInfo[]> {
+  if (noteIds.length === 0) return [];
+  return invoke<AnkiNoteInfo[]>('notesInfo', { notes: noteIds }, url);
+}
+
+export async function updateNoteFields(
+  params: { id: number; fields: Record<string, string> },
+  url?: string,
+): Promise<unknown> {
+  return invoke<unknown>(
+    'updateNoteFields',
+    { note: { id: params.id, fields: params.fields } },
+    url,
+  );
+}
+
 // --- Note-type (model) writers --------------------------------------------
 // Used by the /anki/sync-model endpoint so the user can iterate on the
 // shipped template + CSS without re-exporting an .apkg.
