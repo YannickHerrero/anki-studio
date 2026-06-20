@@ -54,3 +54,66 @@ export async function cardsInfo(cardIds: number[], url?: string): Promise<AnkiCa
   if (cardIds.length === 0) return [];
   return invoke<AnkiCardInfo[]>('cardsInfo', { cards: cardIds }, url);
 }
+
+// --- Note-type (model) writers --------------------------------------------
+// Used by the /anki/sync-model endpoint so the user can iterate on the
+// shipped template + CSS without re-exporting an .apkg.
+
+export type CreateModelTemplate = {
+  Name: string;
+  Front: string;
+  Back: string;
+};
+
+export async function modelNames(url?: string): Promise<string[]> {
+  return invoke<string[]>('modelNames', {}, url);
+}
+
+export async function createModel(
+  params: {
+    modelName: string;
+    inOrderFields: string[];
+    css: string;
+    cardTemplates: CreateModelTemplate[];
+    isCloze?: boolean;
+  },
+  url?: string,
+): Promise<unknown> {
+  return invoke<unknown>(
+    'createModel',
+    {
+      modelName: params.modelName,
+      inOrderFields: params.inOrderFields,
+      css: params.css,
+      isCloze: params.isCloze ?? false,
+      cardTemplates: params.cardTemplates,
+    },
+    url,
+  );
+}
+
+/**
+ * Replace the qfmt/afmt of every card template on the given model. Anki's
+ * AnkiConnect updateModelTemplates takes a per-template map keyed by name.
+ */
+export async function updateModelTemplates(
+  params: { name: string; templates: Record<string, { Front: string; Back: string }> },
+  url?: string,
+): Promise<unknown> {
+  return invoke<unknown>(
+    'updateModelTemplates',
+    { model: { name: params.name, templates: params.templates } },
+    url,
+  );
+}
+
+export async function updateModelStyling(
+  params: { name: string; css: string },
+  url?: string,
+): Promise<unknown> {
+  return invoke<unknown>(
+    'updateModelStyling',
+    { model: { name: params.name, css: params.css } },
+    url,
+  );
+}
