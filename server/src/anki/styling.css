@@ -274,6 +274,31 @@
           mask-size: contain;
 }
 
+/* Phone-sized viewports: shrink the pill + green disc + waveform so the
+   overlay stops crowding the small screenshot. The play triangle inside
+   the disc keeps its 14px size on purpose. */
+@media (max-width: 480px) {
+  .js-audio--overlay {
+    left: 10px;
+    bottom: 10px;
+  }
+  .replay-button,
+  .replaybutton {
+    gap: 8px;
+    padding: 3px 16px 3px 3px;
+  }
+  .replay-button::before,
+  .replaybutton::before {
+    width: 26px;
+    height: 26px;
+  }
+  .replay-button::after,
+  .replaybutton::after {
+    width: 38px;
+    height: 16px;
+  }
+}
+
 /* ----- Vocab-card additions ----- */
 
 .js-section--word {
