@@ -68,6 +68,29 @@ export type YoutubeProbe = {
   manualJapaneseSubs: string[];
 };
 
+export type AnkiSyncResult = {
+  ok: true;
+  /** 'updated' when the model already existed; 'created' on first sync. */
+  action: 'updated' | 'created';
+  modelName: string;
+};
+
+export async function syncAnkiModel(opts: {
+  url?: string;
+  modelName?: string;
+}): Promise<AnkiSyncResult> {
+  const res = await fetch(`${BASE}/anki/sync-model`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(opts),
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    throw new Error(`sync failed: ${res.status} ${text.slice(0, 200)}`);
+  }
+  return res.json();
+}
+
 export async function probeYoutube(url: string): Promise<YoutubeProbe> {
   const res = await fetch(`${BASE}/youtube/probe`, {
     method: 'POST',

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref } from 'vue';
 import { useSettingsStore, MODEL_PRESETS } from '../stores/settings';
+import { syncAnkiModel } from '../api';
 
 const settings = useSettingsStore();
 const showOpenrouter = ref(false);
@@ -9,6 +10,8 @@ const testingOpenrouter = ref(false);
 const testingOpenai = ref(false);
 const openrouterResult = ref<{ ok: boolean; message: string } | null>(null);
 const openaiResult = ref<{ ok: boolean; message: string } | null>(null);
+const syncingAnki = ref(false);
+const ankiResult = ref<{ ok: boolean; message: string } | null>(null);
 
 async function testOpenrouter() {
   testingOpenrouter.value = true;
@@ -33,6 +36,28 @@ async function testOpenrouter() {
     };
   } finally {
     testingOpenrouter.value = false;
+  }
+}
+
+async function syncAnki() {
+  syncingAnki.value = true;
+  ankiResult.value = null;
+  try {
+    const result = await syncAnkiModel({ url: settings.ankiConnectUrl.trim() });
+    ankiResult.value = {
+      ok: true,
+      message:
+        result.action === 'created'
+          ? `Created "${result.modelName}" in Anki.`
+          : `Updated "${result.modelName}" templates + CSS in Anki.`,
+    };
+  } catch (err) {
+    ankiResult.value = {
+      ok: false,
+      message: err instanceof Error ? err.message : String(err),
+    };
+  } finally {
+    syncingAnki.value = false;
   }
 }
 
@@ -154,6 +179,45 @@ async function testOpenai() {
         {{ openaiResult.message }}
       </span>
     </div>
+
+    <hr class="sep" />
+
+    <h2 class="subhead">AnkiConnect</h2>
+    <p class="hint">
+      Push the shipped card-template + CSS straight into a running Anki via the
+      AnkiConnect add-on. Updates the "Japanese Vocab Card" note type in place —
+      no need to re-import an <code>.apkg</code> just to iterate on styling.
+      Existing fields are left alone, so any manual additions in Anki survive.
+    </p>
+
+    <label class="field">
+      <span class="field__label">AnkiConnect URL</span>
+      <input
+        v-model="settings.ankiConnectUrl"
+        type="text"
+        placeholder="http://127.0.0.1:8765"
+        autocomplete="off"
+        spellcheck="false"
+      />
+    </label>
+
+    <div class="actions">
+      <button
+        type="button"
+        class="primary"
+        :disabled="!settings.ankiConnectUrl.trim() || syncingAnki"
+        @click="syncAnki"
+      >
+        {{ syncingAnki ? 'Syncing…' : 'Sync card type to Anki' }}
+      </button>
+      <span
+        v-if="ankiResult"
+        class="result"
+        :class="{ 'result--ok': ankiResult.ok, 'result--err': !ankiResult.ok }"
+      >
+        {{ ankiResult.message }}
+      </span>
+    </div>
   </section>
 </template>
 
@@ -247,6 +311,18 @@ button:disabled {
   border: none;
   border-top: 1px solid var(--pageLine);
   margin: 30px 0 24px;
+}
+.subhead {
+  font-family: 'Shippori Mincho', serif;
+  font-weight: 600;
+  font-size: 17px;
+  margin: 0 0 10px;
+}
+.hint {
+  color: var(--pageMuted);
+  font-size: 13px;
+  line-height: 1.6;
+  margin: 0 0 18px;
 }
 code {
   font-family: ui-monospace, monospace;
