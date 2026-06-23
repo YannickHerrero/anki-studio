@@ -627,3 +627,185 @@ export function grammarToHtml(items: GrammarEntry[]): string {
     )
     .join('');
 }
+
+// ----- Interlinear sentence gloss -----
+
+export type GlossItem = {
+  /** The word / particle exactly as it appears in the chunk. */
+  token: string;
+  /** Kana reading. Empty for particles / punctuation with no reading. */
+  reading: string;
+  /** Literal gloss; conjugation / particle function noted in [brackets]. */
+  gloss: string;
+};
+
+export type GlossChunk = {
+  /** A meaningful chunk of the sentence (Japanese). */
+  phrase: string;
+  /** Kana reading of the whole chunk. */
+  reading: string;
+  items: GlossItem[];
+  /** Natural rendering of just this chunk (the "→" line). */
+  translation: string;
+};
+
+export type SentenceGloss = {
+  chunks: GlossChunk[];
+  /** Natural English translation of the whole sentence. */
+  naturalTranslation: string;
+  /** One–two sentences on what the speaker is trying to convey. */
+  intent: string;
+};
+
+const GLOSS_SCHEMA = {
+  type: 'object',
+  properties: {
+    chunks: {
+      type: 'array',
+      description: 'The sentence split into meaningful chunks, in order.',
+      items: {
+        type: 'object',
+        properties: {
+          phrase: {
+            type: 'string',
+            description: 'A meaningful chunk of the sentence, in Japanese.',
+          },
+          reading: {
+            type: 'string',
+            description: 'Kana reading of the whole chunk. Never romaji.',
+          },
+          items: {
+            type: 'array',
+            description: 'Word-by-word gloss of this chunk, in order.',
+            items: {
+              type: 'object',
+              properties: {
+                token: {
+                  type: 'string',
+                  description: 'The word or particle as it appears in the chunk.',
+                },
+                reading: {
+                  type: 'string',
+                  description:
+                    'Kana reading of this token. Empty string for particles / punctuation with no reading. Never romaji.',
+                },
+                gloss: {
+                  type: 'string',
+                  description:
+                    'Literal meaning. Keep verbs / adjectives in dictionary form and note the conjugation in brackets, e.g. "向く — to face/turn [conditional]". Split compound forms (て-form, たら, させる, …) into separate items. Mark every particle with its grammatical function in brackets, e.g. "[object]", "[subject]", "[conditional]".',
+                },
+              },
+              required: ['token', 'reading', 'gloss'],
+              additionalProperties: false,
+            },
+          },
+          translation: {
+            type: 'string',
+            description: 'A short natural translation of just this chunk.',
+          },
+        },
+        required: ['phrase', 'reading', 'items', 'translation'],
+        additionalProperties: false,
+      },
+    },
+    naturalTranslation: {
+      type: 'string',
+      description: 'Natural English translation of the whole sentence.',
+    },
+    intent: {
+      type: 'string',
+      description:
+        "One or two sentences describing what the speaker is trying to convey — their intention, e.g. \"They're casually showing off how the gadget works.\"",
+    },
+  },
+  required: ['chunks', 'naturalTranslation', 'intent'],
+  additionalProperties: false,
+};
+
+const GLOSS_SYSTEM = `You are a Japanese tutor producing an interlinear gloss for a flashcard.
+Given one Japanese sentence, break it into meaningful chunks. For each chunk:
+- give a kana reading of the whole chunk,
+- give a word-by-word literal gloss in order,
+- give a short natural translation of the chunk.
+For the word-by-word gloss:
+- Keep verbs and adjectives in dictionary form and note the conjugation in brackets, e.g. 向いたら → "向く — to face/turn [conditional]".
+- Split compound forms (て-form, たら, させる, …) into their separate parts rather than glossing them as one unit.
+- Mark every particle with its grammatical function in brackets, e.g. [object], [subject], [topic], [conditional].
+Then give one natural translation of the whole sentence, then a one–two sentence note on what the speaker is trying to convey.
+Use kana for ALL readings — never romaji. Be concise. Return JSON that matches the schema.`;
+
+/**
+ * Produce an interlinear gloss of a single Japanese sentence. Mirrors
+ * `enrichSentence`'s OpenRouter call shape.
+ */
+export async function glossSentence(
+  sentence: string,
+  opts: EnrichOptions,
+): Promise<SentenceGloss> {
+  const body = {
+    model: opts.model,
+    messages: [
+      { role: 'system', content: GLOSS_SYSTEM },
+      { role: 'user', content: sentence },
+    ],
+    response_format: {
+      type: 'json_schema',
+      json_schema: { name: 'sentence_gloss', strict: true, schema: GLOSS_SCHEMA },
+    },
+  };
+
+  const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${opts.apiKey}`,
+      'HTTP-Referer': opts.referer ?? 'http://localhost:5173',
+      'X-Title': opts.appName ?? 'Anki Studio',
+    },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`openrouter ${res.status}: ${text.slice(0, 200)}`);
+  }
+  const json = (await res.json()) as ChatResponse;
+  const content = json.choices?.[0]?.message?.content;
+  if (!content) throw new Error('openrouter returned empty content');
+
+  const parsed = JSON.parse(content) as Partial<SentenceGloss>;
+  return {
+    chunks: Array.isArray(parsed.chunks) ? parsed.chunks : [],
+    naturalTranslation: parsed.naturalTranslation ?? '',
+    intent: parsed.intent ?? '',
+  };
+}
+
+export function glossToHtml(g: SentenceGloss): string {
+  if (!g.chunks.length) return '';
+  const chunks = g.chunks
+    .map((c) => {
+      const reading = c.reading
+        ? `<span class="js-gloss__reading">${escapeHtml(c.reading)}</span>`
+        : '';
+      const items = c.items
+        .map((it) => {
+          const r = it.reading
+            ? ` <span class="js-gloss__token-reading">(${escapeHtml(it.reading)})</span>`
+            : '';
+          return `<li class="js-gloss__item"><span class="js-gloss__token">${escapeHtml(it.token)}</span>${r} <span class="js-gloss__item-gloss">${escapeHtml(it.gloss)}</span></li>`;
+        })
+        .join('');
+      const tr = c.translation
+        ? `<div class="js-gloss__chunk-tr">${escapeHtml(c.translation)}</div>`
+        : '';
+      return `<div class="js-gloss__chunk"><div class="js-gloss__phrase">${escapeHtml(c.phrase)}${reading}</div><ul class="js-gloss__items">${items}</ul>${tr}</div>`;
+    })
+    .join('');
+  const natural = g.naturalTranslation
+    ? `<div class="js-gloss__natural">${escapeHtml(g.naturalTranslation)}</div>`
+    : '';
+  const intent = g.intent
+    ? `<div class="js-gloss__intent">${escapeHtml(g.intent)}</div>`
+    : '';
+  return `<div class="js-gloss">${chunks}${natural}${intent}</div>`;
+}
