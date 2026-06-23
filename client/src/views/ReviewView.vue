@@ -8,6 +8,7 @@ import {
   fetchPicks,
   markWord,
   mediaUrl,
+  mergeTokens,
   mergeWithPrevious,
   relinkVideo,
   relinkYoutube,
@@ -195,6 +196,46 @@ function toggleToken(tokenIdx: number) {
     ...selectedTokensByCue.value,
     [cue.index]: new Set(set),
   };
+}
+
+// --- Token merge: click a word, then shift+click the adjacent one to fuse
+// them into a single token (e.g. 実用 + 性 → 実用性). The plain click sets the
+// anchor; the shift+click on a neighbour merges. ---
+const mergeAnchorIdx = ref<number | null>(null);
+const mergingTokens = ref(false);
+
+function onTokenClick(tokenIdx: number, e: MouseEvent) {
+  if (e.shiftKey) {
+    void mergeAtAnchor(tokenIdx);
+    return;
+  }
+  toggleToken(tokenIdx);
+  mergeAnchorIdx.value = tokenIdx;
+}
+
+async function mergeAtAnchor(tokenIdx: number) {
+  const cue = current.value;
+  const anchor = mergeAnchorIdx.value;
+  // Need an adjacent anchor; otherwise treat this shift+click as the new anchor.
+  if (!cue || anchor === null || Math.abs(tokenIdx - anchor) !== 1) {
+    mergeAnchorIdx.value = tokenIdx;
+    return;
+  }
+  if (mergingTokens.value) return;
+  const lo = Math.min(anchor, tokenIdx);
+  const hi = Math.max(anchor, tokenIdx);
+  mergingTokens.value = true;
+  try {
+    await mergeTokens(props.sid, cue.index, lo, hi);
+    clearCueSelection(cue.index);
+    mergeAnchorIdx.value = null;
+    // Token list changed — pull fresh tokens + recomputed word status.
+    await loadAnalysis();
+  } catch (err) {
+    error.value = err instanceof Error ? err.message : String(err);
+  } finally {
+    mergingTokens.value = false;
+  }
 }
 
 function clearCueSelection(cueIndex: number) {
@@ -828,8 +869,10 @@ const picksForCurrentCue = computed(() =>
                     currentSelection.has(i) ? 'tok--picked' : '',
                     tok.lemma ? 'tok--content' : 'tok--literal',
                     hoveredTokenIdx === i ? 'tok--hovered' : '',
+                    mergeAnchorIdx === i ? 'tok--merge-anchor' : '',
                   ]"
-                  @click="toggleToken(i)"
+                  title="Click to pick · Shift+click an adjacent word to merge"
+                  @click="onTokenClick(i, $event)"
                   @mouseenter="hoveredTokenIdx = i"
                   @mouseleave="hoveredTokenIdx === i ? (hoveredTokenIdx = null) : null"
                 >{{ tok.t }}</span>
@@ -1440,6 +1483,11 @@ const picksForCurrentCue = computed(() =>
 }
 .tok--hovered {
   background: var(--lineSoft);
+}
+/* Anchor for a pending shift+click merge. */
+.tok--merge-anchor {
+  outline: 1px dashed var(--accent);
+  outline-offset: 1px;
 }
 
 /* ============ Right column: panel + note ============ */

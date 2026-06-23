@@ -157,6 +157,26 @@ export async function addPicks(
   return res.json();
 }
 
+/**
+ * Merge an adjacent span of tokens ([from, to] inclusive, in /analysis order)
+ * on a cue into a single token. Returns the new token list. The caller should
+ * re-fetch /analysis to pick up status for the merged word.
+ */
+export async function mergeTokens(
+  sid: string,
+  cueIndex: number,
+  from: number,
+  to: number,
+): Promise<{ ok: boolean; tokens: Array<{ surface: string; lemma: string; reading: string; content: boolean }> }> {
+  const res = await fetch(`${BASE}/session/${sid}/card/${cueIndex}/mergeTokens`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ from, to }),
+  });
+  if (!res.ok) throw new Error(`mergeTokens failed: ${res.status} ${await res.text()}`);
+  return res.json();
+}
+
 export async function removePick(sid: string, pickId: string): Promise<{
   pileCount: number;
   /** Lemmas whose known-store status changed (null = entry removed → reverts to 'new'). */
