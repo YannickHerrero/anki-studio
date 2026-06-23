@@ -433,6 +433,9 @@ async function mergePrev() {
     const data = await fetchCards(props.sid);
     session.cards = data.cards;
     void refreshPicks(); // merge re-keyed picks server-side
+    // The merged cue gets a brand-new index, so the analysis map (keyed by
+    // cue index) has no row for it yet — reload or its tokens vanish.
+    await loadAnalysis();
     index.value = res.newPosition;
   } catch (err) {
     mergeError.value = err instanceof Error ? err.message : String(err);
