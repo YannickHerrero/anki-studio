@@ -12,11 +12,11 @@ import {
 import { buildApkg, type ApkgNote } from '../lib/apkg.js';
 import { readAnkiAssets } from '../lib/ankiAssets.js';
 import {
-  enrichSentence,
   enrichWordBatch,
-  grammarToHtml,
+  glossSentence,
+  glossToHtml,
   wordDetailsToHtml,
-  type Enrichment,
+  type SentenceGloss,
   type WordItem,
 } from '../lib/openrouter.js';
 import { mapWithConcurrency } from '../lib/pool.js';
@@ -124,24 +124,27 @@ export async function exportRoutes(app: FastifyInstance) {
         write('progress', { kind: 'word', done: wordDone, total: toShip.length });
       }
 
-      // 2. Sentence-level grammar: one call per UNIQUE cue across the pile.
-      //    Translation reused from cue.translation (set by /translate already).
+      // 2. Interlinear gloss: one call per UNIQUE cue across the pile. The
+      //    gloss also yields a natural translation we fall back on when the
+      //    cue wasn't translated via /translate. A gloss failure for one cue
+      //    is non-fatal — that card just ships without a gloss.
       const uniqueCueIndices = Array.from(new Set(toShip.map((p) => p.cueIndex)));
-      let grammarDone = 0;
-      const grammarByCue = new Map<number, Enrichment>();
+      let glossDone = 0;
+      const glossByCue = new Map<number, SentenceGloss>();
       await mapWithConcurrency(uniqueCueIndices, 5, async (cueIndex) => {
         const cue = cueByIndex.get(cueIndex)!;
-        const input = cue.translation
-          ? { sentence: stripFurigana(cue.text), existingTranslation: cue.translation }
-          : { sentence: stripFurigana(cue.text) };
-        const e = await enrichSentence(input, {
-          apiKey: body.openrouterKey!,
-          model: body.model!,
-          appName: body.appName,
-        });
-        grammarByCue.set(cueIndex, e);
-        grammarDone++;
-        write('progress', { kind: 'grammar', done: grammarDone, total: uniqueCueIndices.length });
+        try {
+          const g = await glossSentence(stripFurigana(cue.text), {
+            apiKey: body.openrouterKey!,
+            model: body.model!,
+            appName: body.appName,
+          });
+          glossByCue.set(cueIndex, g);
+        } catch {
+          // Skip this cue's gloss; the export still proceeds.
+        }
+        glossDone++;
+        write('progress', { kind: 'gloss', done: glossDone, total: uniqueCueIndices.length });
       });
 
       const { front, back, css } = await readAnkiAssets();
@@ -154,7 +157,7 @@ export async function exportRoutes(app: FastifyInstance) {
 
       const notes: ApkgNote[] = toShip.map((pick) => {
         const cue = cueByIndex.get(pick.cueIndex)!;
-        const enr = grammarByCue.get(pick.cueIndex);
+        const gloss = glossByCue.get(pick.cueIndex);
         const sentenceWithTarget = highlightTargetInSentence(cue.text, pick.surface);
         const audioFile = `as_${sid.slice(0, 8)}_${cue.index}.mp3`;
         const shotFile = `as_${sid.slice(0, 8)}_${cue.index}.jpg`;
@@ -163,9 +166,10 @@ export async function exportRoutes(app: FastifyInstance) {
           // the dictionary form lives inside WordDetails on the back.
           targetWord: pick.surface,
           sentence: sentenceWithTarget,
-          sentenceTranslation: cue.translation ?? enr?.translation ?? '',
+          sentenceTranslation: cue.translation ?? gloss?.naturalTranslation ?? '',
           wordDetails: wordDetailsByPick.get(pick.id) ?? '',
-          grammar: enr ? grammarToHtml(enr.grammar) : '',
+          // The Grammar field now carries the interlinear gloss.
+          grammar: gloss ? glossToHtml(gloss) : '',
           noteText: cue.note ?? '',
           guidSeed: `${session.id}:${pick.id}`,
           audioFilename: audioFile,
