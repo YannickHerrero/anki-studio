@@ -184,6 +184,73 @@
   margin-top: 12px;
 }
 
+.js-gloss__chunk + .js-gloss__chunk {
+  margin-top: 14px;
+}
+
+.js-gloss__phrase {
+  font-family: 'Zen Kaku Gothic New', sans-serif;
+  font-weight: 700;
+  font-size: 16px;
+  color: var(--accent);
+  margin-bottom: 4px;
+}
+
+.js-gloss__reading {
+  font-weight: 400;
+  font-size: 12px;
+  color: var(--bMuted);
+  margin-left: 8px;
+}
+
+.js-gloss__items {
+  list-style: none;
+  margin: 0;
+  padding: 0 0 0 12px;
+  border-left: 1px solid var(--bLine);
+}
+
+.js-gloss__item {
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--bInk);
+}
+
+.js-gloss__token {
+  font-weight: 600;
+}
+
+.js-gloss__token-reading {
+  color: var(--bMuted);
+}
+
+.js-gloss__chunk-tr {
+  margin-top: 4px;
+  font-size: 13px;
+  font-style: italic;
+  color: var(--bMuted);
+}
+
+.js-gloss__chunk-tr::before {
+  content: '→ ';
+}
+
+.js-gloss__natural {
+  margin-top: 16px;
+  font-size: 14px;
+  line-height: 1.7;
+  font-weight: 600;
+  color: var(--bInk);
+}
+
+.js-gloss__intent {
+  margin-top: 10px;
+  font-size: 12px;
+  line-height: 1.7;
+  font-style: italic;
+  color: var(--bMuted);
+}
+
 .js-notes {
   font-size: 13px;
   line-height: 1.7;
